@@ -1,48 +1,76 @@
 const { initializeApp, cert } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
-
-// စောစောက ဒေါင်းလုဒ်ဆွဲထားသော json ဖိုင်ကို လှမ်းချိတ်ခြင်း
 const serviceAccount = require("../../firebase-key.json");
 
-// Firebase ကို အစပြုခြင်း (Version အသစ် ရေးနည်း)
-initializeApp({
-    credential: cert(serviceAccount)
-});
-
+initializeApp({ credential: cert(serviceAccount) });
 const db = getFirestore();
 
-// User တစ်ယောက် ယနေ့ ၅ ခါ ပြည့်/မပြည့် စစ်ဆေးမည့် Function
+// 🛑 သင့်ရဲ့ Telegram ID ကို အောက်ပါနေရာတွင် ပြောင်းထည့်ပါ။ (ဂဏန်းချည်းပဲ ဖြစ်ရပါမည်)
+// ID မသိသေးရင် အခုလောလောဆယ် ဒီအတိုင်းထားခဲ့ပါ။ Bot ကနေ ပြန်ကြည့်လို့ရအောင် အောက်မှာ လုပ်ပေးထားပါတယ်။
+const ADMIN_ID = 2035091217; 
+
+// User တစ်ယောက်ကို Premium/Admin ဟုတ်မဟုတ်နှင့် ၅ ခါ ပြည့်/မပြည့် စစ်ဆေးမည့် Function
 async function checkUsageLimit(userId) {
-    // ယနေ့ ရက်စွဲကို ရယူခြင်း (ဥပမာ - "2026-08-06")
+    // ၁။ Admin ဟုတ်မဟုတ် အရင်စစ်မည် (Admin ဆိုလျှင် Limit မရှိပါ)
+    if (userId === ADMIN_ID) {
+        return { allowed: true, remaining: "Unlimited (Admin)" };
+    }
+
+    // ၂။ Premium User ဟုတ်မဟုတ် စစ်ဆေးမည်
+    const userDoc = await db.collection('users').doc(userId.toString()).get();
+    if (userDoc.exists) {
+        const userData = userDoc.data();
+        if (userData.isPremium) {
+            const expiryDate = new Date(userData.premiumExpiry);
+            const now = new Date();
+            
+            // Premium သက်တမ်း မကုန်သေးလျှင် (Limit မရှိပါ)
+            if (expiryDate > now) {
+                return { allowed: true, remaining: "Unlimited (Premium)" };
+            } else {
+                // သက်တမ်းကုန်သွားပါက Premium ကို ပိတ်ပစ်မည် (false လုပ်မည်)
+                await db.collection('users').doc(userId.toString()).update({ isPremium: false });
+            }
+        }
+    }
+
+    // ၃။ Free User (သို့) Premium သက်တမ်းကုန်သွားသူများအတွက် နေ့စဉ် ၅ ခါ စစ်ဆေးခြင်း
     const today = new Date().toISOString().split('T')[0];
-    
-    // Database ထဲတွင် User ID နှင့် ရက်စွဲကို တွဲပြီး မှတ်တမ်းရှာခြင်း
     const docId = `${userId}_${today}`;
-    const userRef = db.collection('user_daily_usage').doc(docId);
+    const limitRef = db.collection('user_daily_usage').doc(docId);
 
     try {
-        const doc = await userRef.get();
-
+        const doc = await limitRef.get();
         if (!doc.exists) {
-            // ယနေ့အတွက် ပထမဆုံးအကြိမ် ဖြစ်ပါက Database တွင် 1 ဟု စတင်မှတ်သားမည်
-            await userRef.set({ count: 1, date: today });
-            return { allowed: true, remaining: 4 }; // ၄ ခါ ကျန်သေးကြောင်း ပြန်ပို့မည်
+            await limitRef.set({ count: 1, date: today });
+            return { allowed: true, remaining: 4 }; 
         } else {
             let currentCount = doc.data().count;
-            
             if (currentCount >= 5) {
-                // ၅ ခါ ပြည့်သွားပါက ခွင့်မပြုတော့ပါ
                 return { allowed: false, remaining: 0 };
             } else {
-                // မပြည့်သေးပါက အကြိမ်အရေအတွက် ၁ တိုးမည်
-                await userRef.update({ count: currentCount + 1 });
+                await limitRef.update({ count: currentCount + 1 });
                 return { allowed: true, remaining: 5 - (currentCount + 1) };
             }
         }
     } catch (error) {
         console.error("Firebase DB Error:", error);
-        return { allowed: true, remaining: "unknown" }; // DB Error တက်ပါက သုံးခွင့်ပေးထားမည်
+        return { allowed: true, remaining: "unknown" }; 
     }
 }
 
-module.exports = { checkUsageLimit };
+// Admin မှ User အား Premium သက်တမ်း ထည့်ပေးမည့် Function
+async function makeUserPremium(userId, days = 30) {
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + days); // ယနေ့မှစ၍ ရက်ပေါင်းထည့်ခြင်း
+    
+    await db.collection('users').doc(userId.toString()).set({
+        isPremium: true,
+        premiumExpiry: expiryDate.toISOString()
+    }, { merge: true }); // ရှိပြီးသား Data မပျက်အောင် merge သုံးခြင်း
+    
+    return expiryDate.toISOString().split('T')[0]; // ကုန်ဆုံးမည့်ရက်ကို ပြန်ပို့မည်
+}
+
+// အခြားဖိုင်များမှ လှမ်းသုံးနိုင်ရန် Export ထုတ်ခြင်း
+module.exports = { checkUsageLimit, makeUserPremium, ADMIN_ID };
