@@ -3,38 +3,38 @@ const config = require('../config');
 
 const genAI = new GoogleGenerativeAI(config.GEMINI_API_KEY);
 
-// AI ရဲ့ စရိုက်လက္ခဏာကို အတိအကျ သတ်မှတ်ခြင်း (Persona Setup)
-const aiInstruction = `
-You are 'Linguist AI', a highly professional and friendly English speaking tutor specifically for Myanmar (Burmese) students. 
+// Premium Feature - AI စရိုက်လက္ခဏာ (၃) မျိုး ခွဲခြားသတ်မှတ်ခြင်း
+const personas = {
+    // ၁။ ပုံမှန် အင်္ဂလိပ်စာဆရာ (LinguistPro)
+    default: `You are 'LinguistPro', a highly professional and friendly English speaking tutor for Myanmar students. 
+    1. If the user speaks Burmese, reply in Burmese but end with an English question.
+    2. If the user makes an English mistake, correct it gently and explain in BURMESE. Then continue in English.`,
 
-Strict Rules to follow:
-1. If the user speaks to you in Burmese (e.g., asking for help, general chat, or greetings), you MUST reply in BURMESE to make them feel comfortable. However, ALWAYS end your message with a simple English sentence or question to encourage them to practice.
-2. If the user writes in English and makes a grammar or vocabulary mistake, correctly gently and explain the grammar rule clearly in BURMESE. After the explanation, continue the chat in English.
-3. If the user asks for the meaning of an English word, explain it thoroughly in BURMESE.
-4. Keep your English sentences simple, natural, and easy to understand for beginners.
+    // ၂။ တင်းကျပ်သော IELTS စစ်ဆေးသူ
+    ielts: `You are a strict IELTS Speaking Examiner. 
+    1. Ask the user IELTS Part 1, 2, or 3 questions one by one.
+    2. Wait for their answer. Do NOT explain in Burmese unless requested. 
+    3. Evaluate their grammar, vocabulary, and fluency strictly, give them a band score for that answer, and ask the next question.`,
 
-Example Interaction 1:
-User: Hey ငါ့ကို english စာသင်ပေး
-Linguist AI: မင်္ဂလာပါ။ ကျွန်တော်က Linguist AI ပါ။ အင်္ဂလိပ်စာ တူတူလေ့လာကြရအောင်နော်။ အရင်ဆုံး သင့်နာမည်လေး ဘယ်လိုခေါ်လဲ ပြောပြပေးနိုင်မလား? 
-What is your name?
+    // ၃။ ပရော်ဖက်ရှင်နယ် ဘာသာပြန် (Subtitle & Document)
+    translator: `You are a strict Professional English-to-Burmese Translator.
+    1. Translate any text or .srt subtitle files provided by the user.
+    2. Maintain the original formatting, timecodes, and emotional tone perfectly.
+    3. Output ONLY the translated text, without any additional chat or explanations.`
+};
 
-Example Interaction 2:
-User: I goes to school.
-Linguist AI: [Burmese Explanation]: 'I' နောက်မှာ verb ကို 'es' ပေါင်းစရာမလိုပါဘူး။ 'I go to school' လို့ သုံးရပါမယ်။
-[English Reply]: Now, tell me, what do you usually do at school?
-`;
+// User ရွေးချယ်ထားသော Mode ပေါ်မူတည်၍ AI Model ကို ပြောင်းလဲပေးမည့် Function
+function getModel(mode) {
+    return genAI.getGenerativeModel({
+        model: "gemini-flash-latest", // အတည်ငြိမ်ဆုံး Model နာမည်
+        systemInstruction: personas[mode] || personas.default
+    });
+}
 
-const model = genAI.getGenerativeModel({
-    model: "gemini-flash-latest",
-    systemInstruction: aiInstruction
-});
-
-// User ဆီက စာကို လက်ခံပြီး AI အဖြေပြန်ထုတ်ပေးမည့် Function
-// (အပေါ်က Code အဟောင်းများ ရှိနေပါမည်)
-
-// User ဆီက စာ (Text) ကို လက်ခံပြီး AI အဖြေပြန်ထုတ်ပေးမည့် Function (မူလရှိပြီးသား)
-async function getTutorResponse(userMessage) {
+// Text Message အတွက်
+async function getTutorResponse(userMessage, mode = 'default') {
     try {
+        const model = getModel(mode);
         const result = await model.generateContent(userMessage);
         return result.response.text();
     } catch (error) {
@@ -43,19 +43,22 @@ async function getTutorResponse(userMessage) {
     }
 }
 
-// ထပ်တိုးမည့် အပိုင်း - User ဆီက အသံ (Voice) ကို လက်ခံပြီး အဖြေထုတ်ပေးမည့် Function
-async function getTutorResponseFromAudio(audioBuffer, mimeType = "audio/ogg") {
+// Voice Message အတွက် 
+async function getTutorResponseFromAudio(audioBuffer, mimeType = "audio/ogg", mode = 'default') {
     try {
+        const model = getModel(mode);
         const audioPart = {
             inlineData: {
-                data: audioBuffer.toString("base64"), // အသံဖိုင်ကို AI နားလည်သော Base64 format ပြောင်းခြင်း
+                data: audioBuffer.toString("base64"),
                 mimeType: mimeType
             }
         };
         
-        // AI ကို အသံနားထောင်ပြီး တုံ့ပြန်ရန် အမိန့်ပေးခြင်း
-        const prompt = "Please listen to this voice message from the user. Correct any pronunciation or grammar mistakes gently, and reply to keep the conversation going.";
-        
+        // Mode ပေါ်မူတည်ပြီး AI ကို နားထောင်ခိုင်းမည့် Prompt ပြောင်းလဲခြင်း
+        let prompt = "Please listen to this voice message and reply appropriately.";
+        if (mode === 'ielts') prompt = "Listen to the student's IELTS answer, evaluate their pronunciation and fluency, give a quick score, and ask the next question.";
+        if (mode === 'default') prompt = "Listen to this voice message. Correct any pronunciation or grammar mistakes gently in Burmese, and reply in English to keep the conversation going.";
+
         const result = await model.generateContent([prompt, audioPart]);
         return result.response.text();
     } catch (error) {
@@ -64,5 +67,4 @@ async function getTutorResponseFromAudio(audioBuffer, mimeType = "audio/ogg") {
     }
 }
 
-// Function အသစ်ကိုပါ အခြားဖိုင်များက သုံးနိုင်အောင် Export ထုတ်ပေးခြင်း
 module.exports = { getTutorResponse, getTutorResponseFromAudio };
