@@ -1,6 +1,7 @@
 const { getTutorResponse, getTutorResponseFromAudio } = require('../ai/gemini');
 const googleTTS = require('google-tts-api'); 
 const { Markup } = require('telegraf'); // Telegram ခလုတ်များအတွက်
+const { checkUsageLimit } = require('../database/firebase');
 
 // Database မသုံးသေးသဖြင့် User တွေရဲ့ Mode ကို ယာယီမှတ်ထားမည့် နေရာ
 const userModes = {}; 
@@ -46,6 +47,12 @@ function setupHandlers(bot) {
         const currentMode = userModes[ctx.from.id] || 'default'; // User ရဲ့ Mode ကို စစ်ဆေးခြင်း
 
         try {
+            // -- Database Limit စစ်ဆေးခြင်း အစ --
+            const limitStatus = await checkUsageLimit(ctx.from.id);
+            if (!limitStatus.allowed) {
+                return ctx.reply("⏳ တောင်းပန်ပါတယ်။ သင်၏ ယနေ့ အခမဲ့ (Free) အသုံးပြုခွင့် (၅) ကြိမ် ပြည့်သွားပါပြီ။ \n\nမနက်ဖြန်မှ ထပ်မံအသုံးပြုပေးပါ (သို့မဟုတ်) Premium သို့ ပြောင်းလဲပါ။");
+            } // <--- ဒီနေရာမှာ အပိတ်ကွင်းလေး ကျန်ခဲ့တာပါ
+
             await ctx.sendChatAction('typing');
             
             // Mode ကိုပါ AI ဆီ ထည့်ပို့ပေးခြင်း
@@ -74,7 +81,14 @@ function setupHandlers(bot) {
         const currentMode = userModes[ctx.from.id] || 'default';
 
         try {
+            // -- Database Limit စစ်ဆေးခြင်း အစ --
+            const limitStatus = await checkUsageLimit(ctx.from.id);
+            if (!limitStatus.allowed) {
+                return ctx.reply("⏳ တောင်းပန်ပါတယ်။ သင်၏ ယနေ့ အခမဲ့ (Free) အသုံးပြုခွင့် (၅) ကြိမ် ပြည့်သွားပါပြီ။ \n\nမနက်ဖြန်မှ ထပ်မံအသုံးပြုပေးပါ (သို့မဟုတ်) Premium သို့ ပြောင်းလဲပါ။");
+            } // <--- ဒီနေရာမှာလည်း အပိတ်ကွင်းလေး ကျန်ခဲ့တာပါ
+
             await ctx.sendChatAction('typing');
+            
             const fileId = ctx.message.voice.file_id;
             const fileLink = await ctx.telegram.getFileLink(fileId);
             const response = await fetch(fileLink.href);
