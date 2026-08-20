@@ -6,6 +6,9 @@ if (!config.GEMINI_API_KEY) {
 }
 
 const genAI = new GoogleGenerativeAI(config.GEMINI_API_KEY || 'missing-key');
+const MAX_RETRIES_PER_MODEL = 2;
+const BASE_RETRY_DELAY_MS = 350;
+const TRANSIENT_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
 const personas = {
     default: `You are LinguistPro, a professional and friendly English-speaking tutor for Myanmar students.
@@ -25,58 +28,97 @@ Output only the translated content without commentary.`
 
 const VALID_MODES = new Set(Object.keys(personas));
 
-function getModel(mode = 'default') {
+function getModel(mode = 'default', modelName = config.GEMINI_MODEL) {
     const safeMode = VALID_MODES.has(mode) ? mode : 'default';
     return genAI.getGenerativeModel({
-        model: config.GEMINI_MODEL,
+        model: modelName,
         systemInstruction: personas[safeMode]
     });
 }
 
+function errorStatus(error) {
+    const direct = Number(error?.status || error?.response?.status || error?.statusCode);
+    if (Number.isInteger(direct) && direct > 0) return direct;
+    const match = String(error?.message || '').match(/\[(\d{3})\]/);
+    return match ? Number(match[1]) : null;
+}
+
+function isTransientError(error) {
+    const status = errorStatus(error);
+    if (status && TRANSIENT_STATUS_CODES.has(status)) return true;
+    return /(high demand|temporarily unavailable|service unavailable|overloaded|rate.?limit|too many requests|timeout|timed out)/i.test(String(error?.message || ''));
+}
+
+function retryDelayMs(attempt) {
+    return BASE_RETRY_DELAY_MS * (2 ** Math.max(0, Number(attempt) || 0));
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function modelCandidates() {
+    return [...new Set([config.GEMINI_MODEL, config.GEMINI_FALLBACK_MODEL].filter(Boolean))];
+}
+
+function logGeminiError(operation, modelName, error, retrying = false) {
+    console.error(`Gemini ${operation} API error:`, {
+        model: modelName,
+        name: error?.name || 'UnknownError',
+        status: errorStatus(error),
+        retrying,
+        message: error?.message || 'Unknown Gemini error'
+    });
+}
+
+async function generateWithRecovery(mode, operation, requestFactory) {
+    let lastError = null;
+    for (const modelName of modelCandidates()) {
+        const model = getModel(mode, modelName);
+        for (let attempt = 0; attempt <= MAX_RETRIES_PER_MODEL; attempt += 1) {
+            try {
+                const result = await requestFactory(model);
+                return result.response.text().trim();
+            } catch (error) {
+                lastError = error;
+                const transient = isTransientError(error);
+                const retrying = transient && attempt < MAX_RETRIES_PER_MODEL;
+                logGeminiError(operation, modelName, error, retrying);
+                if (!transient) break;
+                if (retrying) await sleep(retryDelayMs(attempt));
+            }
+        }
+    }
+    const apiError = new Error('API_ERROR');
+    apiError.cause = lastError;
+    apiError.status = errorStatus(lastError);
+    throw apiError;
+}
+
 async function getTutorResponse(userMessage, mode = 'default') {
     if (!String(userMessage || '').trim()) throw new Error('EMPTY_MESSAGE');
-    try {
-        const model = getModel(mode);
-        const result = await model.generateContent(String(userMessage));
-        return result.response.text().trim();
-    } catch (error) {
-        console.error('Gemini text API error:', {
-            name: error?.name || 'UnknownError',
-            status: error?.status || error?.response?.status || null,
-            message: error?.message || 'Unknown Gemini error'
-        });
-        const apiError = new Error('API_ERROR');
-        apiError.cause = error;
-        apiError.status = error?.status || error?.response?.status || null;
-        throw apiError;
-    }
+    return generateWithRecovery(mode, 'text', (model) => model.generateContent(String(userMessage)));
 }
 
 async function getTutorResponseFromAudio(audioBuffer, mimeType = 'audio/ogg', mode = 'default', customPrompt = '') {
     if (!audioBuffer || !audioBuffer.length) throw new Error('EMPTY_AUDIO');
-    try {
-        const model = getModel(mode);
-        const prompt = customPrompt || (mode === 'ielts'
-            ? 'Listen to the student’s IELTS answer. Evaluate pronunciation, grammar, vocabulary, and fluency, give a brief estimated band score, and ask the next question.'
-            : mode === 'translator'
-                ? 'Transcribe and translate this English voice message into Burmese. Output only the Burmese translation.'
-                : 'Listen to this voice message. Gently correct pronunciation or grammar mistakes in Burmese, then reply in English to continue the conversation.');
-        const result = await model.generateContent([
-            prompt,
-            { inlineData: { data: audioBuffer.toString('base64'), mimeType } }
-        ]);
-        return result.response.text().trim();
-    } catch (error) {
-        console.error('Gemini audio API error:', {
-            name: error?.name || 'UnknownError',
-            status: error?.status || error?.response?.status || null,
-            message: error?.message || 'Unknown Gemini error'
-        });
-        const apiError = new Error('API_ERROR');
-        apiError.cause = error;
-        apiError.status = error?.status || error?.response?.status || null;
-        throw apiError;
-    }
+    const prompt = customPrompt || (mode === 'ielts'
+        ? 'Listen to the student’s IELTS answer. Evaluate pronunciation, grammar, vocabulary, and fluency, give a brief estimated band score, and ask the next question.'
+        : mode === 'translator'
+            ? 'Transcribe and translate this English voice message into Burmese. Output only the Burmese translation.'
+            : 'Listen to this voice message. Gently correct pronunciation or grammar mistakes in Burmese, then reply in English to continue the conversation.');
+    return generateWithRecovery(mode, 'audio', (model) => model.generateContent([
+        prompt,
+        { inlineData: { data: audioBuffer.toString('base64'), mimeType } }
+    ]));
 }
 
-module.exports = { getTutorResponse, getTutorResponseFromAudio, VALID_MODES };
+module.exports = {
+    getTutorResponse,
+    getTutorResponseFromAudio,
+    VALID_MODES,
+    errorStatus,
+    isTransientError,
+    retryDelayMs,
+    modelCandidates
+};

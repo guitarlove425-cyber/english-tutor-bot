@@ -52,6 +52,8 @@ Edit `.env` and provide at least:
 ```env
 BOT_TOKEN=your_telegram_bot_token
 GEMINI_API_KEY=your_gemini_api_key
+# Optional: automatic fallback for temporary Gemini overloads
+GEMINI_FALLBACK_MODEL=gemini-2.5-flash
 ADMIN_ID=your_telegram_user_id
 ```
 
@@ -87,11 +89,11 @@ To list Gemini models available to your API key:
 npm run check
 ```
 
-The health endpoint is available at `http://localhost:3000/` or the port specified by `PORT`.
+The health endpoint is available at `http://localhost:3000/` or the port specified by `PORT`. Gemini text and audio calls retry transient `429`, `500`, `502`, `503`, and `504` responses with bounded exponential backoff. If the primary model remains temporarily unavailable, the bot automatically tries `GEMINI_FALLBACK_MODEL` (default `gemini-2.5-flash`) before returning an API error. This protects the Telegram classroom flow from temporary high-demand outages without hiding permanent credential or permission errors.
 
 ## Render deployment
 
-Create a Render Web Service connected to this repository. Use `npm install` as the build command and `npm start` as the start command. Add `BOT_TOKEN`, `GEMINI_API_KEY`, `ADMIN_ID`, and `FIREBASE_SERVICE_ACCOUNT_JSON` as Render environment secrets. Render supplies `PORT` automatically. The service health endpoint is `/`.
+Create a Render Web Service connected to this repository. Use `npm install` as the build command and `npm start` as the start command. Add `BOT_TOKEN`, `GEMINI_API_KEY`, `ADMIN_ID`, `FIREBASE_SERVICE_ACCOUNT_JSON`, and optionally `GEMINI_FALLBACK_MODEL=gemini-2.5-flash` as Render environment secrets. Render supplies `PORT` automatically. The service health endpoint is `/`.
 
 Telegram polling requires only one running instance of the bot. Do not run the same bot token in two production services at the same time, or Telegram will reject one polling connection.
 

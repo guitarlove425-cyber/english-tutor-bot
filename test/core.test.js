@@ -26,6 +26,16 @@ const { TRACKS, getTrack, trackIsPremium } = require('../src/academy/tracks');
 const { normalizeClassCode, studentSummary } = require('../src/classroom/classroom');
 const { buildAcademyTextPrompt, buildCoachPrompt, buildDailyPlanPrompt, buildTeacherPhasePrompt, buildRemediationPrompt } = require('../src/academy/teacher');
 const { createTeacherSession, advanceTeacherSession, normalizeHomework, completeHomework, scheduleReview, getDueReviews, completeReview } = require('../src/academy/session');
+const { errorStatus, isTransientError, retryDelayMs, modelCandidates } = require('../src/ai/gemini');
+
+test('Gemini transient errors are recognized and retry delays remain bounded', () => {
+    assert.equal(errorStatus({ message: 'Service unavailable [503]' }), 503);
+    assert.equal(isTransientError({ status: 503, message: 'high demand' }), true);
+    assert.equal(isTransientError({ status: 401, message: 'invalid API key' }), false);
+    assert.equal(retryDelayMs(0), 350);
+    assert.equal(retryDelayMs(2), 1400);
+    assert.ok(modelCandidates().length >= 1);
+});
 
 test('splitMessage keeps Telegram chunks under the configured limit', () => {
     const chunks = splitMessage('a'.repeat(8000), 3900);
