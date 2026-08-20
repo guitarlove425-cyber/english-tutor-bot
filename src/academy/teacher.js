@@ -125,6 +125,21 @@ function buildCoachVoicePrompt(level) {
     return `You are an English Learning Coach for a Myanmar learner at ${level.title} (${level.cefr}). Listen to the learner's voice question or speaking attempt. Reply directly, transcribe the important sentence, correct one key issue, explain it briefly in Burmese, give one pronunciation or fluency tip, and ask one helpful follow-up question. Be warm and practical.`;
 }
 
+function buildDailyPlanPrompt(level, lesson, stats, date) {
+    return `You are a professional English speaking teacher creating a realistic one-day study plan for a Myanmar learner.
+Date: ${date}
+Level: ${level.title} (${level.cefr})
+Current lesson: ${lesson ? `${lesson.number}. ${lesson.title}` : 'Review and maintenance'}
+Lesson objective: ${lesson?.objective || 'Maintain and improve practical English.'}
+Grammar focus: ${lesson?.grammar || 'Review the learner’s weak points.'}
+Vocabulary focus: ${lesson?.vocabulary || 'Useful everyday vocabulary.'}
+Learner stats: ${JSON.stringify(stats)}
+
+Create a balanced plan for one day with 4 to 5 tasks covering speaking, listening or shadowing, vocabulary, grammar, and review. Keep it realistic for a busy learner and adapt the difficulty to the level and weak areas. Include exact minutes and a simple measurable action for every task.
+Return JSON only with this exact shape: {"date":"${date}","focus":"...","totalMinutes":30,"tasks":[{"id":"speaking","type":"speaking|listening|vocabulary|grammar|review","title":"...","minutes":10,"instructions":"..."}]}.
+Tasks must have unique ids, minutes must be integers from 3 to 20, totalMinutes must equal the sum of task minutes, and there must be 4 or 5 tasks.`;
+}
+
 function buildAssessmentPrompt(level, assessmentType, answer) {
     return `You are an experienced English speaking examiner. Assess this learner at ${level.title} (${level.cefr}). Assessment type: ${assessmentType}.
 Learner answer:
@@ -146,5 +161,6 @@ module.exports = {
     buildQuizFeedbackPrompt,
     buildCoachPrompt,
     buildCoachVoicePrompt,
+    buildDailyPlanPrompt,
     buildAssessmentPrompt
 };

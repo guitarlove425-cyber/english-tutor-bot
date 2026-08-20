@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, academyKeyboard, modeReplyKeyboard, BUTTONS, normalizeQuiz } = require('../src/bot/handlers');
+const { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, academyKeyboard, modeReplyKeyboard, BUTTONS, normalizeQuiz, normalizeDailyPlan } = require('../src/bot/handlers');
 const {
     checkUsageLimit,
     makeUserPremium,
@@ -77,6 +77,19 @@ test('quiz normalization accepts four-option questions and rejects malformed que
     assert.equal(normalizeQuiz({ question: 'Broken', options: ['A', 'B', 'C', 'D'], answerIndex: 4 }), null);
 });
 
+test('daily plan normalization creates measurable tasks and rejects invalid plans', () => {
+    const plan = normalizeDailyPlan({ date: '2026-08-20', focus: 'Speaking confidence', totalMinutes: 99, tasks: [
+        { type: 'speaking', title: 'Self introduction', minutes: 10, instructions: 'Speak for one minute.' },
+        { type: 'listening', title: 'Shadowing', minutes: 8, instructions: 'Repeat the sample aloud.' },
+        { type: 'vocabulary', title: 'Daily words', minutes: 6, instructions: 'Use five new words.' },
+        { type: 'grammar', title: 'Be verb review', minutes: 7, instructions: 'Make five sentences.' }
+    ] }, '2026-08-20');
+    assert.equal(plan.date, '2026-08-20');
+    assert.equal(plan.tasks.length, 4);
+    assert.equal(plan.totalMinutes, 31);
+    assert.equal(normalizeDailyPlan({ tasks: [] }, '2026-08-20'), null);
+});
+
 test('academy curriculum covers Starter through Advanced/Pro with Premium gating', () => {
     assert.equal(LEVELS.length, 6);
     assert.deepEqual(LEVELS.map((level) => level.cefr), ['A0', 'A1', 'A2', 'B1', 'B2', 'C1+']);
@@ -94,7 +107,9 @@ test('academy progress persists placement, points, assessment, and reset in memo
     assert.equal(started.active, true);
     const placed = await saveAcademyProgress(userId, { ...started, placementCompleted: true, levelId: 'intermediate', lessonNumber: 2, points: 120, streak: 3 });
     assert.equal(placed.levelId, 'intermediate');
-    assert.equal((await getAcademyProgress(userId)).points, 120);
+    const saved = await getAcademyProgress(userId);
+    assert.equal(saved.points, 120);
+    assert.deepEqual(saved.dailyPlanCompleted, []);
     await resetAcademy(userId);
     const reset = await getAcademyProgress(userId);
     assert.equal(reset.active, false);
@@ -130,7 +145,7 @@ test('Academy Telegram handlers register all public flows', () => {
         telegram: { sendMessage: async () => {} }
     };
     setupHandlers(fakeBot);
-    for (const command of ['academy', 'levels', 'academylesson', 'academyquiz', 'coach', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
+    for (const command of ['academy', 'levels', 'academylesson', 'academyquiz', 'coach', 'dailyplan', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
         assert.ok(registered.commands.includes(command), `missing /${command}`);
     }
     assert.ok(registered.events.includes('text'));
@@ -143,4 +158,5 @@ test('Academy Telegram handlers register all public flows', () => {
     assert.ok(registered.hears.includes(BUTTONS.mode.translator));
     assert.ok(registered.hears.includes(BUTTONS.academy.quiz));
     assert.ok(registered.hears.includes(BUTTONS.academy.coach));
+    assert.ok(registered.hears.includes(BUTTONS.academy.dailyPlan));
 });

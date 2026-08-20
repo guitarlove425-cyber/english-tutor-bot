@@ -33,6 +33,7 @@ const {
     buildQuizFeedbackPrompt,
     buildCoachPrompt,
     buildCoachVoicePrompt,
+    buildDailyPlanPrompt,
     buildAssessmentPrompt
 } = require('../academy/teacher');
 
@@ -119,7 +120,8 @@ function academyProgressMessage(progress) {
     const lesson = getAcademyLesson(progress.levelId, progress.lessonNumber);
     const percent = Math.round((completed / total) * 100);
     const premiumLabel = level.premium ? 'Premium' : 'Free';
-    return `🏫 English Speaking Academy\n\nLevel: ${level.title} (${level.cefr}) — ${premiumLabel}\nCurrent lesson: ${lesson ? `${lesson.number}. ${lesson.title}` : 'Completed'}\nCompleted: ${completed}/${total} lessons (${percent}%)\nPoints: ${progress.points || 0}\nPractice attempts: ${progress.practiceAttempts || 0}\nSpeaking attempts: ${progress.speakingAttempts || 0}\nQuiz score: ${progress.quizCorrect || 0}/${progress.quizAnswered || 0}\nQuiz streak: ${progress.quizStreak || 0}\nCoach questions: ${progress.coachQuestions || 0}\nStreak: ${progress.streak || 0} day(s)\n\nUse /academylesson to repeat, /academyquiz for a fresh question, /coach to ask for advice, /academyreview to review, /academyassessment for a checkpoint, and /academyreset to start again.`;
+    const dailyDone = progress.dailyPlan ? `${(progress.dailyPlanCompleted || []).length}/${progress.dailyPlan.tasks.length}` : 'Not started';
+    return `🏫 English Speaking Academy\n\nLevel: ${level.title} (${level.cefr}) — ${premiumLabel}\nCurrent lesson: ${lesson ? `${lesson.number}. ${lesson.title}` : 'Completed'}\nCompleted: ${completed}/${total} lessons (${percent}%)\nPoints: ${progress.points || 0}\nPractice attempts: ${progress.practiceAttempts || 0}\nSpeaking attempts: ${progress.speakingAttempts || 0}\nQuiz score: ${progress.quizCorrect || 0}/${progress.quizAnswered || 0}\nQuiz streak: ${progress.quizStreak || 0}\nCoach questions: ${progress.coachQuestions || 0}\nDaily plan: ${dailyDone}\nStreak: ${progress.streak || 0} day(s)\n\nUse /academylesson to repeat, /academyquiz for a fresh question, /coach to ask for advice, /dailyplan for today’s plan, /academyreview to review, /academyassessment for a checkpoint, and /academyreset to start again.`;
 }
 
 async function hasAcademyAccess(ctx, levelId) {
@@ -226,6 +228,79 @@ async function answerQuiz(ctx, selectedIndex) {
     await ctx.reply(`${correct ? '✅ Correct!' : `❌ Not quite. Correct answer: ${correctAnswer}`}\n\n${feedback}\n\nQuiz score: ${updated.quizCorrect}/${updated.quizAnswered}\nPoints: ${updated.points}`, quizNextKeyboard());
 }
 
+function normalizeDailyPlan(data, date) {
+    if (!data || !Array.isArray(data.tasks) || data.tasks.length < 4 || data.tasks.length > 5) return null;
+    const allowedTypes = new Set(['speaking', 'listening', 'vocabulary', 'grammar', 'review']);
+    const tasks = data.tasks.map((task, index) => ({
+        id: `task_${index + 1}`,
+        type: allowedTypes.has(task.type) ? task.type : 'review',
+        title: String(task.title || `English practice ${index + 1}`).trim().slice(0, 120),
+        minutes: Math.max(3, Math.min(20, Number.parseInt(task.minutes, 10) || 5)),
+        instructions: String(task.instructions || 'Practice this skill in English.').trim().slice(0, 500)
+    }));
+    return {
+        date,
+        focus: String(data.focus || 'Balanced English practice').trim().slice(0, 200),
+        totalMinutes: tasks.reduce((sum, task) => sum + task.minutes, 0),
+        tasks
+    };
+}
+
+function dailyPlanKeyboard(plan, completed = []) {
+    const buttons = plan.tasks.map((task, index) => [Markup.button.callback(`${completed.includes(task.id) ? '✅' : '⬜'} ${task.title}`, `daily_done_${index}`)]);
+    buttons.push([Markup.button.callback('🔄 Generate today’s plan again', 'daily_refresh')]);
+    buttons.push([Markup.button.callback('🏠 Main menu', 'daily_home')]);
+    return Markup.inlineKeyboard(buttons);
+}
+
+function dailyPlanMessage(plan, completed = []) {
+    const done = plan.tasks.filter((task) => completed.includes(task.id)).length;
+    const lines = plan.tasks.map((task) => `${completed.includes(task.id) ? '✅' : '⬜'} ${task.title} — ${task.minutes} min\n   ${task.instructions}`);
+    return `📅 Daily Study Plan — ${plan.date}\n\nFocus: ${plan.focus}\nTotal time: ${plan.totalMinutes} minutes\nCompleted: ${done}/${plan.tasks.length}\n\n${lines.join('\n\n')}\n\nTap a task after completing it. I will keep your daily progress.`;
+}
+
+async function generateDailyPlan(ctx, force = false) {
+    const progress = await getAcademyProgress(ctx.from.id);
+    const level = getLevel(progress.levelId);
+    const lesson = getAcademyLesson(progress.levelId, progress.lessonNumber);
+    if (!progress.active) return ctx.reply('Send /academy first so I can build a plan for your level.');
+    if (!(await hasAcademyAccess(ctx, level.id))) return;
+    const date = new Date().toISOString().slice(0, 10);
+    if (!force && progress.dailyPlanDate === date && progress.dailyPlan?.tasks?.length) {
+        return ctx.reply(dailyPlanMessage(progress.dailyPlan, progress.dailyPlanCompleted || []), dailyPlanKeyboard(progress.dailyPlan, progress.dailyPlanCompleted || []));
+    }
+    const status = await usageOrReply(ctx);
+    if (!status) return;
+    const stats = {
+        quizAnswered: progress.quizAnswered || 0,
+        quizCorrect: progress.quizCorrect || 0,
+        quizStreak: progress.quizStreak || 0,
+        practiceAttempts: progress.practiceAttempts || 0,
+        speakingAttempts: progress.speakingAttempts || 0,
+        lastScore: progress.lastScore || null,
+        streak: progress.streak || 0,
+        previousPlanCompleted: progress.dailyPlanCompleted || []
+    };
+    const raw = await getTutorResponse(buildDailyPlanPrompt(level, lesson, stats, date), 'default');
+    const plan = normalizeDailyPlan(parseJsonResponse(raw), date);
+    if (!plan) return replyLongText(ctx, raw);
+    const updated = await saveAcademyProgress(ctx.from.id, { ...progress, dailyPlan: plan, dailyPlanDate: date, dailyPlanCompleted: [] });
+    await ctx.reply(dailyPlanMessage(plan), dailyPlanKeyboard(plan));
+    return updated;
+}
+
+async function completeDailyPlanTask(ctx, index) {
+    const progress = await getAcademyProgress(ctx.from.id);
+    const plan = progress.dailyPlan;
+    if (!plan || progress.dailyPlanDate !== new Date().toISOString().slice(0, 10)) return ctx.reply('Generate today’s plan first with /dailyplan.');
+    const task = plan.tasks[Number(index)];
+    if (!task) return ctx.reply('That study task is not available.');
+    const completed = [...new Set([...(progress.dailyPlanCompleted || []), task.id])];
+    const updated = await saveAcademyProgress(ctx.from.id, { ...progress, dailyPlanCompleted: completed, points: Number(progress.points || 0) + (completed.includes(task.id) && !(progress.dailyPlanCompleted || []).includes(task.id) ? 5 : 0) });
+    await ctx.reply(`✅ Marked complete: ${task.title}\n\n${dailyPlanMessage(plan, completed)}`, dailyPlanKeyboard(plan, completed));
+    return updated;
+}
+
 const BUTTONS = {
     main: {
         academy: '🏫 Speaking Academy',
@@ -249,6 +324,7 @@ const BUTTONS = {
         roleplay: '🎭 Role-play',
         quiz: '🧠 Lesson Quiz',
         coach: '💬 Learning Coach',
+        dailyPlan: '📅 Daily Study Plan',
         assessment: '📝 Assessment',
         certificate: '🏆 Certificate',
         home: '🏠 ပင်မ Menu'
@@ -269,8 +345,9 @@ function academyKeyboard() {
         [BUTTONS.academy.lesson, BUTTONS.academy.next],
         [BUTTONS.academy.progress, BUTTONS.academy.review],
         [BUTTONS.academy.roleplay, BUTTONS.academy.quiz],
-        [BUTTONS.academy.coach, BUTTONS.academy.assessment],
-        [BUTTONS.academy.certificate, BUTTONS.academy.home]
+        [BUTTONS.academy.coach, BUTTONS.academy.dailyPlan],
+        [BUTTONS.academy.assessment, BUTTONS.academy.certificate],
+        [BUTTONS.academy.home]
     ]).resize().persistent();
 }
 
@@ -319,6 +396,7 @@ function setupButtonRouting(bot) {
         [BUTTONS.academy.roleplay, '/academyroleplay'],
         [BUTTONS.academy.quiz, '/academyquiz'],
         [BUTTONS.academy.coach, '/coach'],
+        [BUTTONS.academy.dailyPlan, '/dailyplan'],
         [BUTTONS.academy.assessment, '/academyassessment'],
         [BUTTONS.academy.certificate, '/academycertificate'],
         [BUTTONS.academy.home, '/menu']
@@ -334,7 +412,7 @@ function setupHandlers(bot) {
         await ctx.reply(`Hello ${ctx.from.first_name || 'there'}!\n\nI am LinguistPro, your AI English Tutor.\n\nCurrent mode: ${mode}\n\nFor a complete step-by-step journey from beginner to Pro, send /academy. For the original beginner lessons, send /course.\nUse the quick buttons below or /help for all commands.`, mainKeyboard());
     });
 
-    bot.help((ctx) => ctx.reply('Commands:\n/start - Start the tutor\n/help - Show help\n/academy - Start or resume the full Speaking Academy\n/levels - View Free and Premium levels\n/academylesson - Show the current Academy lesson\n/academyquiz - Get a fresh lesson quiz question\n/coach - Ask the English Learning Coach anything\n/nextacademylesson - Complete the current Academy lesson\n/academyprogress - View level, points, streak, and progress\n/academyreview - Review a completed lesson\n/academyassessment - Take a checkpoint assessment\n/academyroleplay - Start a realistic role-play\n/academycertificate - View Pro completion status\n/academyreset - Reset Academy progress\n/course - Open the original 12-lesson beginner course\n/mode - Choose Normal, IELTS, or Translator mode\n/myid - Show your Telegram ID\n/upgrade USER_ID DAYS - Admin only\n\nUse the quick buttons below. In Academy practice, send text or voice and I will teach, correct, quiz, and coach you like a personal teacher.', mainKeyboard()));
+    bot.help((ctx) => ctx.reply('Commands:\n/start - Start the tutor\n/help - Show help\n/academy - Start or resume the full Speaking Academy\n/levels - View Free and Premium levels\n/academylesson - Show the current Academy lesson\n/academyquiz - Get a fresh lesson quiz question\n/coach - Ask the English Learning Coach anything\n/dailyplan - Generate today’s level-based study plan\n/nextacademylesson - Complete the current Academy lesson\n/academyprogress - View level, points, streak, and progress\n/academyreview - Review a completed lesson\n/academyassessment - Take a checkpoint assessment\n/academyroleplay - Start a realistic role-play\n/academycertificate - View Pro completion status\n/academyreset - Reset Academy progress\n/course - Open the original 12-lesson beginner course\n/mode - Choose Normal, IELTS, or Translator mode\n/myid - Show your Telegram ID\n/upgrade USER_ID DAYS - Admin only\n\nUse the quick buttons below. In Academy practice, send text or voice and I will teach, correct, quiz, and coach you like a personal teacher.', mainKeyboard()));
 
     bot.command('menu', (ctx) => ctx.reply('🏠 Main menu', mainKeyboard()));
 
@@ -406,6 +484,15 @@ function setupHandlers(bot) {
         } catch (error) {
             console.error('Coach start error:', error.message);
             await ctx.reply('🙏 I could not open the Learning Coach right now.');
+        }
+    });
+
+    bot.command('dailyplan', async (ctx) => {
+        try {
+            await generateDailyPlan(ctx);
+        } catch (error) {
+            console.error('Daily plan error:', error.message);
+            await ctx.reply(error.message === 'API_ERROR' ? '🙏 I could not build your plan because the AI service is temporarily unavailable.' : '🙏 I could not build your daily plan right now.');
         }
     });
 
@@ -523,6 +610,31 @@ function setupHandlers(bot) {
     });
 
     bot.action('quiz_home', async (ctx) => {
+        await ctx.answerCbQuery();
+        await ctx.reply('🏠 Main menu', mainKeyboard());
+    });
+
+    bot.action(/^daily_done_(\d+)$/, async (ctx) => {
+        try {
+            await ctx.answerCbQuery();
+            await completeDailyPlanTask(ctx, Number(ctx.match[1]));
+        } catch (error) {
+            console.error('Daily plan task error:', error.message);
+            await ctx.reply('🙏 I could not update that daily task right now.');
+        }
+    });
+
+    bot.action('daily_refresh', async (ctx) => {
+        try {
+            await ctx.answerCbQuery();
+            await generateDailyPlan(ctx, true);
+        } catch (error) {
+            console.error('Daily plan refresh error:', error.message);
+            await ctx.reply('🙏 I could not refresh your daily plan right now.');
+        }
+    });
+
+    bot.action('daily_home', async (ctx) => {
         await ctx.answerCbQuery();
         await ctx.reply('🏠 Main menu', mainKeyboard());
     });
@@ -862,4 +974,4 @@ function setupHandlers(bot) {
     });
 }
 
-module.exports = { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, academyKeyboard, modeReplyKeyboard, BUTTONS, normalizeQuiz, quizKeyboard, quizNextKeyboard };
+module.exports = { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, academyKeyboard, modeReplyKeyboard, BUTTONS, normalizeQuiz, quizKeyboard, quizNextKeyboard, normalizeDailyPlan, dailyPlanKeyboard };

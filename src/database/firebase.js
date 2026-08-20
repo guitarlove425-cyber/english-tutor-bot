@@ -222,6 +222,9 @@ function defaultAcademyProgress() {
         quizHistory: [],
         lastQuiz: null,
         coachQuestions: 0,
+        dailyPlan: null,
+        dailyPlanDate: null,
+        dailyPlanCompleted: [],
         startedAt: null,
         updatedAt: null
     };
