@@ -1089,7 +1089,12 @@ function setupHandlers(bot) {
     });
 
     bot.command('teacherlesson', async (ctx) => {
-        try { await runTeacherPhase(ctx, 'explain'); } catch (error) { console.error('Teacher lesson error:', error.message); await ctx.reply('🙏 ဆရာသင်ခန်းစာကို အခုဖွင့်မရသေးပါ။ ခဏနေပြီး ပြန်စမ်းပါ။'); }
+        try { await runTeacherPhase(ctx, 'explain'); } catch (error) {
+            console.error('Teacher lesson error:', error.stack || error.message);
+            await ctx.reply(error.message === 'API_ERROR'
+                ? '🙏 AI ဆရာဝန်ဆောင်မှုကို အခုချိတ်ဆက်မရသေးပါ။ Render ရှိ GEMINI_API_KEY နဲ့ GEMINI_MODEL ကို စစ်ပြီး Deploy latest commit ပြန်လုပ်ပါ။'
+                : '🙏 ဆရာသင်ခန်းစာကို အခုဖွင့်မရသေးပါ။ ခဏနေပြီး ပြန်စမ်းပါ။');
+        }
     });
 
     bot.command('homework', async (ctx) => {
@@ -1103,8 +1108,13 @@ function setupHandlers(bot) {
             await ctx.answerCbQuery();
             await runTeacherPhase(ctx, ctx.match[1]);
         } catch (error) {
-            console.error('Teacher phase error:', error.message);
-            await ctx.reply('🙏 ဒီသင်ကြားရေးအဆင့်ကို အခုလုပ်မရသေးပါ။ ခဏနေပြီး ပြန်စမ်းပါ။');
+            console.error('Teacher phase error:', error.stack || error.message);
+            const message = error.message === 'API_ERROR'
+                ? '🙏 AI ဆရာဝန်ဆောင်မှုကို အခုချိတ်ဆက်မရသေးပါ။ Render ရှိ GEMINI_API_KEY နဲ့ GEMINI_MODEL ကို စစ်ပြီး Deploy latest commit ပြန်လုပ်ပါ။'
+                : error.message === 'EMPTY_MESSAGE'
+                    ? '🙏 လေ့ကျင့်ရန် စာသား သို့မဟုတ် အသံအဖြေကို ပို့ပါ။'
+                    : '🙏 ဒီသင်ကြားရေးအဆင့်မှာ အတွင်းပိုင်းအမှားဖြစ်နေပါတယ်။ ခဏနေပြီး ပြန်စမ်းပါ။';
+            await ctx.reply(message);
         }
     });
 

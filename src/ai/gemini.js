@@ -40,8 +40,15 @@ async function getTutorResponse(userMessage, mode = 'default') {
         const result = await model.generateContent(String(userMessage));
         return result.response.text().trim();
     } catch (error) {
-        console.error('Gemini text API error:', error.message);
-        throw new Error('API_ERROR');
+        console.error('Gemini text API error:', {
+            name: error?.name || 'UnknownError',
+            status: error?.status || error?.response?.status || null,
+            message: error?.message || 'Unknown Gemini error'
+        });
+        const apiError = new Error('API_ERROR');
+        apiError.cause = error;
+        apiError.status = error?.status || error?.response?.status || null;
+        throw apiError;
     }
 }
 
@@ -60,8 +67,15 @@ async function getTutorResponseFromAudio(audioBuffer, mimeType = 'audio/ogg', mo
         ]);
         return result.response.text().trim();
     } catch (error) {
-        console.error('Gemini audio API error:', error.message);
-        throw new Error('API_ERROR');
+        console.error('Gemini audio API error:', {
+            name: error?.name || 'UnknownError',
+            status: error?.status || error?.response?.status || null,
+            message: error?.message || 'Unknown Gemini error'
+        });
+        const apiError = new Error('API_ERROR');
+        apiError.cause = error;
+        apiError.status = error?.status || error?.response?.status || null;
+        throw apiError;
     }
 }
 
