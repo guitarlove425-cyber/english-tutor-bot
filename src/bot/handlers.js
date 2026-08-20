@@ -162,6 +162,11 @@ const BUTTONS = {
         help: '❓ Help',
         myid: '🆔 My ID'
     },
+    mode: {
+        normal: '🧑‍🏫 Normal Tutor',
+        ielts: '🎓 IELTS Examiner',
+        translator: '📝 Subtitle Translator'
+    },
     academy: {
         lesson: '📘 ဒီသင်ခန်းစာ',
         next: '➡️ နောက်သင်ခန်းစာ',
@@ -200,6 +205,15 @@ function modeKeyboard() {
     ]);
 }
 
+function modeReplyKeyboard() {
+    return Markup.keyboard([
+        [BUTTONS.mode.normal],
+        [BUTTONS.mode.ielts],
+        [BUTTONS.mode.translator],
+        [BUTTONS.academy.home]
+    ]).resize().persistent();
+}
+
 function commandUpdate(ctx, command) {
     const message = {
         ...ctx.update.message,
@@ -218,6 +232,9 @@ function setupButtonRouting(bot) {
         [BUTTONS.main.mode, '/mode'],
         [BUTTONS.main.help, '/help'],
         [BUTTONS.main.myid, '/myid'],
+        [BUTTONS.mode.normal, '/mode_normal'],
+        [BUTTONS.mode.ielts, '/mode_ielts'],
+        [BUTTONS.mode.translator, '/mode_translator'],
         [BUTTONS.academy.lesson, '/academylesson'],
         [BUTTONS.academy.next, '/nextacademylesson'],
         [BUTTONS.academy.progress, '/academyprogress'],
@@ -244,7 +261,20 @@ function setupHandlers(bot) {
 
     setupButtonRouting(bot);
 
-    bot.command('mode', (ctx) => ctx.reply('Choose a tutor mode:', modeKeyboard()));
+    async function selectMode(ctx, mode, message) {
+        try {
+            await setUserMode(ctx.from.id, mode);
+            await ctx.reply(message, mainKeyboard());
+        } catch (error) {
+            console.error('Mode selection error:', error.message);
+            await ctx.reply('🙏 I could not save your mode. Please try again.');
+        }
+    }
+
+    bot.command('mode', (ctx) => ctx.reply('Choose a tutor mode:', modeReplyKeyboard()));
+    bot.command('mode_normal', (ctx) => selectMode(ctx, 'default', '✅ Normal Tutor mode is active.'));
+    bot.command('mode_ielts', (ctx) => selectMode(ctx, 'ielts', '✅ IELTS Examiner mode is active.'));
+    bot.command('mode_translator', (ctx) => selectMode(ctx, 'translator', '✅ Subtitle Translator mode is active.'));
 
     bot.command('levels', async (ctx) => {
         const lines = LEVELS.map((level) => `${level.premium ? '🔒' : '✅'} ${level.title} (${level.cefr}) — ${level.premium ? 'Premium' : 'Free'}\n${level.goal}`);
@@ -472,7 +502,7 @@ function setupHandlers(bot) {
             try {
                 await setUserMode(ctx.from.id, mode);
                 await ctx.answerCbQuery();
-                await ctx.reply(message);
+                await ctx.reply(message, mainKeyboard());
             } catch (error) {
                 console.error('Mode update error:', error.message);
                 await ctx.answerCbQuery('Could not save mode. Try again.');
@@ -688,4 +718,4 @@ function setupHandlers(bot) {
     });
 }
 
-module.exports = { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, academyKeyboard, BUTTONS };
+module.exports = { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, academyKeyboard, modeReplyKeyboard, BUTTONS };

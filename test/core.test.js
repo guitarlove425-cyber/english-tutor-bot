@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, academyKeyboard } = require('../src/bot/handlers');
+const { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, academyKeyboard, modeReplyKeyboard, BUTTONS } = require('../src/bot/handlers');
 const {
     checkUsageLimit,
     makeUserPremium,
@@ -96,10 +96,17 @@ test('academy progress persists placement, points, assessment, and reset in memo
 test('reply keyboards are constructed with persistent Telegram layouts', () => {
     const main = mainKeyboard();
     const academy = academyKeyboard();
+    const mode = modeReplyKeyboard();
     assert.ok(main.reply_markup.keyboard.length >= 3);
     assert.ok(academy.reply_markup.keyboard.length >= 4);
     assert.equal(main.reply_markup.resize_keyboard, true);
     assert.equal(academy.reply_markup.is_persistent, true);
+    assert.deepEqual(mode.reply_markup.keyboard.flat(), [
+        BUTTONS.mode.normal,
+        BUTTONS.mode.ielts,
+        BUTTONS.mode.translator,
+        BUTTONS.academy.home
+    ]);
 });
 
 test('Academy Telegram handlers register all public flows', () => {
@@ -115,7 +122,7 @@ test('Academy Telegram handlers register all public flows', () => {
         telegram: { sendMessage: async () => {} }
     };
     setupHandlers(fakeBot);
-    for (const command of ['academy', 'levels', 'academylesson', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset']) {
+    for (const command of ['academy', 'levels', 'academylesson', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
         assert.ok(registered.commands.includes(command), `missing /${command}`);
     }
     assert.ok(registered.events.includes('text'));
@@ -123,4 +130,7 @@ test('Academy Telegram handlers register all public flows', () => {
     assert.ok(registered.hears.includes('🏫 Speaking Academy'));
     assert.ok(registered.hears.includes('📘 ဒီသင်ခန်းစာ'));
     assert.ok(registered.hears.includes('➡️ နောက်သင်ခန်းစာ'));
+    assert.ok(registered.hears.includes(BUTTONS.mode.normal));
+    assert.ok(registered.hears.includes(BUTTONS.mode.ielts));
+    assert.ok(registered.hears.includes(BUTTONS.mode.translator));
 });
