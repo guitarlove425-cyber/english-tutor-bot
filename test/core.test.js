@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, learningKeyboard, practiceKeyboard, progressKeyboard, profileKeyboard, courseKeyboard, moreKeyboard, privacyKeyboard, classroomKeyboard, academyKeyboard, modeReplyKeyboard, BUTTONS, normalizeQuiz, normalizeDailyPlan } = require('../src/bot/handlers');
+const { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, learningKeyboard, practiceKeyboard, progressKeyboard, profileKeyboard, courseKeyboard, moreKeyboard, privacyKeyboard, classroomKeyboard, adminKeyboard, academyKeyboard, modeReplyKeyboard, BUTTONS, normalizeQuiz, normalizeDailyPlan, isAdminUser } = require('../src/bot/handlers');
 const {
     checkUsageLimit,
     makeUserPremium,
@@ -269,6 +269,15 @@ test('Burmese-first prompts preserve English practice content', () => {
     assert.match(buildRemediationPrompt(level, lesson, ['speaking']), /Weak skills to target/);
 });
 
+test('Admin controls are isolated from ordinary global keyboards', () => {
+    const regular = JSON.stringify(mainKeyboard(987654321));
+    const admin = JSON.stringify(adminKeyboard());
+    assert.equal(isAdminUser(987654321), false);
+    assert.doesNotMatch(regular, /Admin Center|Premium ဖွင့်မယ်|Student Dashboard/);
+    assert.match(admin, /Premium ဖွင့်မယ်/);
+    assert.match(admin, /Student Dashboard/);
+});
+
 test('global navigation builders return keyboards for every major section', () => {
     for (const keyboard of [mainKeyboard(), learningKeyboard(), practiceKeyboard(), progressKeyboard(), profileKeyboard(), courseKeyboard(), moreKeyboard(), privacyKeyboard(), classroomKeyboard(false), classroomKeyboard(true), academyKeyboard(), modeReplyKeyboard()]) {
         assert.ok(keyboard);
@@ -305,13 +314,14 @@ test('Academy Telegram handlers register all public flows', () => {
         telegram: { sendMessage: async () => {} }
     };
     setupHandlers(fakeBot);
-    for (const command of ['academy', 'kids', 'kidslesson', 'kidspractice', 'menu', 'learning', 'practice', 'progressmenu', 'more', 'coursemenu', 'privacy_menu', 'classroommenu', 'classroom_join_prompt', 'classroom_create_prompt', 'classroom_dashboard_prompt', 'upgrade_prompt', 'kidsstages', 'kidsmenu', 'kidsprogress', 'kidsreview', 'learning', 'practice', 'profile', 'recommend', 'errorclinic', 'conversation', 'levels', 'academylesson', 'teacherlesson', 'homework', 'academyquiz', 'coach', 'dailyplan', 'wordbank', 'pronunciation', 'livevoice', 'endlive', 'skillreport', 'tracks', 'privacy', 'classroom', 'teacher', 'classroom_create', 'classroom_join', 'classroom_dashboard', 'exportdata', 'deletedata', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
+    for (const command of ['admin', 'academy', 'kids', 'kidslesson', 'kidspractice', 'menu', 'learning', 'practice', 'progressmenu', 'more', 'coursemenu', 'privacy_menu', 'classroommenu', 'classroom_join_prompt', 'classroom_create_prompt', 'classroom_dashboard_prompt', 'upgrade_prompt', 'kidsstages', 'kidsmenu', 'kidsprogress', 'kidsreview', 'learning', 'practice', 'profile', 'recommend', 'errorclinic', 'conversation', 'levels', 'academylesson', 'teacherlesson', 'homework', 'academyquiz', 'coach', 'dailyplan', 'wordbank', 'pronunciation', 'livevoice', 'endlive', 'skillreport', 'tracks', 'privacy', 'classroom', 'teacher', 'classroom_create', 'classroom_join', 'classroom_dashboard', 'exportdata', 'deletedata', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
         assert.ok(registered.commands.includes(command), `missing /${command}`);
     }
     assert.ok(registered.events.includes('text'));
     assert.ok(registered.events.includes('voice'));
     assert.ok(registered.hears.includes('🏫 Speaking Academy'));
     assert.ok(registered.hears.includes(BUTTONS.main.learning));
+    assert.ok(registered.hears.includes(BUTTONS.admin.menu));
     assert.ok(registered.hears.includes(BUTTONS.main.today));
     assert.ok(registered.hears.includes(BUTTONS.main.more));
     assert.ok(registered.hears.includes(BUTTONS.main.classroom));

@@ -742,6 +742,7 @@ const BUTTONS = {
         home: '🏠 ပင်မ Menu'
     },
     admin: {
+        menu: '🛡️ Admin Center',
         classroomList: '🏫 အတန်းများကြည့်မယ်',
         classroomCreate: '➕ အတန်းသစ်ဖန်တီးမယ်',
         classroomJoin: '🔑 အတန်း Code နဲ့ဝင်မယ်',
@@ -776,14 +777,21 @@ const BUTTONS = {
     }
 };
 
-function mainKeyboard() {
-    return Markup.keyboard([
+function isAdminUser(userId) {
+    const configuredAdminId = Number(ADMIN_ID);
+    return configuredAdminId > 0 && Number(userId) === configuredAdminId;
+}
+
+function mainKeyboard(userId = null) {
+    const rows = [
         [BUTTONS.main.learning, BUTTONS.main.kids],
         [BUTTONS.main.today, BUTTONS.main.practice],
         [BUTTONS.main.progress, BUTTONS.main.profile],
         [BUTTONS.main.beginner, BUTTONS.main.more],
         [BUTTONS.main.help]
-    ]).resize().persistent();
+    ];
+    if (isAdminUser(userId)) rows.splice(4, 0, [BUTTONS.admin.menu]);
+    return Markup.keyboard(rows).resize().persistent();
 }
 
 function courseKeyboard() {
@@ -794,11 +802,21 @@ function courseKeyboard() {
     ]).resize().persistent();
 }
 
-function moreKeyboard() {
-    return Markup.keyboard([
+function moreKeyboard(userId = null) {
+    const rows = [
         [BUTTONS.main.mode, BUTTONS.main.privacy],
-        [BUTTONS.main.myid, BUTTONS.main.classroom],
-        [BUTTONS.main.help, BUTTONS.main.home]
+        [BUTTONS.main.myid, BUTTONS.main.classroom]
+    ];
+    if (isAdminUser(userId)) rows.push([BUTTONS.admin.menu]);
+    rows.push([BUTTONS.main.help, BUTTONS.main.home]);
+    return Markup.keyboard(rows).resize().persistent();
+}
+
+function adminKeyboard() {
+    return Markup.keyboard([
+        [BUTTONS.admin.classroomList, BUTTONS.admin.classroomCreate],
+        [BUTTONS.admin.classroomDashboard, BUTTONS.admin.upgrade],
+        [BUTTONS.main.home]
     ]).resize().persistent();
 }
 
@@ -845,13 +863,15 @@ function privacyKeyboard() {
     ]).resize().persistent();
 }
 
-function profileKeyboard() {
-    return Markup.keyboard([
+function profileKeyboard(userId = null) {
+    const rows = [
         [BUTTONS.main.profile, BUTTONS.academy.tracks],
         [BUTTONS.main.mode, BUTTONS.main.privacy],
-        [BUTTONS.main.classroom, BUTTONS.main.myid],
-        [BUTTONS.main.help, BUTTONS.main.home]
-    ]).resize().persistent();
+        [BUTTONS.main.classroom, BUTTONS.main.myid]
+    ];
+    if (isAdminUser(userId)) rows.push([BUTTONS.admin.menu]);
+    rows.push([BUTTONS.main.help, BUTTONS.main.home]);
+    return Markup.keyboard(rows).resize().persistent();
 }
 
 function kidsReplyKeyboard() {
@@ -965,6 +985,7 @@ function setupButtonRouting(bot) {
         [BUTTONS.kids.menu, '/kidsmenu'],
         [BUTTONS.privacy.export, '/exportdata'],
         [BUTTONS.privacy.delete, '/deletedata'],
+        [BUTTONS.admin.menu, '/admin'],
         [BUTTONS.admin.classroomList, '/classroom'],
         [BUTTONS.admin.classroomJoin, '/classroom_join_prompt'],
         [BUTTONS.admin.classroomCreate, '/classroom_create_prompt'],
@@ -1015,16 +1036,20 @@ function recommendationMessage(recommendation) {
 function setupHandlers(bot) {
     bot.start(async (ctx) => {
         const mode = await getCurrentMode(ctx.from.id);
-        await ctx.reply(`မင်္ဂလာပါ ${ctx.from.first_name || 'သူငယ်ချင်း'}!\n\nကျွန်တော်က သင့်ရဲ့ AI English Tutor LinguistPro ဖြစ်ပါတယ်။\n\nလက်ရှိ Mode: ${mode}\n\nBeginner မှ Pro အထိ အဆင့်လိုက်လေ့လာရန် /academy ကိုနှိပ်ပါ။ ၁၂ ခန်းပါ အခြေခံသင်တန်းအတွက် /course ကိုနှိပ်ပါ။\nအောက်က မြန်စာခလုတ်များကို အသုံးပြုပါ။ Command အားလုံးကြည့်ရန် /help ကိုနှိပ်ပါ။`, mainKeyboard());
+        await ctx.reply(`မင်္ဂလာပါ ${ctx.from.first_name || 'သူငယ်ချင်း'}!\n\nကျွန်တော်က သင့်ရဲ့ AI English Tutor LinguistPro ဖြစ်ပါတယ်။\n\nလက်ရှိ Mode: ${mode}\n\nBeginner မှ Pro အထိ အဆင့်လိုက်လေ့လာရန် /academy ကိုနှိပ်ပါ။ ၁၂ ခန်းပါ အခြေခံသင်တန်းအတွက် /course ကိုနှိပ်ပါ။\nအောက်က မြန်စာခလုတ်များကို အသုံးပြုပါ။ Command အားလုံးကြည့်ရန် /help ကိုနှိပ်ပါ။`, mainKeyboard(ctx.from.id));
     });
 
-    bot.help((ctx) => ctx.reply('📚 အသုံးပြုနိုင်သော Command များ\n\n/start - Tutor ကိုစတင်ရန်\n/help - ဒီအကူအညီစာမျက်နှာကို ပြရန်\n/learning - အဆင့်လိုက်သင်ယူမှု Menu\n/practice - လေ့ကျင့်ခန်း Menu\n/profile - ကိုယ်ပိုင် Learning Profile\n/recommend - ဒီနေ့ ဆရာ့အကြံပြုချက်\n/errorclinic - အမှားပြန်သင်ခန်းစာ\n/conversation - Conversation Ladder\n/kids - Kids English School စရန်\n/kidslesson - Kids လက်ရှိ Lesson\n/kidspractice - Kids လေ့ကျင့်ခန်း Menu\n/kidsstages - Kids အဆင့်များ\n/kidsmenu - Kids Menu\n/kidsprogress - Kids တိုးတက်မှု\n/kidsreview - Kids Review\n/academy - Speaking Academy ကို စတင်ရန် သို့မဟုတ် ပြန်ဆက်ရန်\n/levels - Free/Premium အဆင့်များကြည့်ရန်\n/academylesson - လက်ရှိ Academy lesson ပြန်ကြည့်ရန်\n/teacherlesson - ဆရာဦးဆောင်သင်ခန်းစာ စရန်\n/homework - ဒီနေ့အိမ်စာကြည့်ရန်\n/academyquiz - လက်ရှိ lesson အတွက် Quiz မေးခွန်းအသစ်ရရန်\n/coach - English Learning Coach ကို မေးမြန်းရန်\n/dailyplan - ဒီနေ့အတွက် ကိုယ်ပိုင် Study Plan ဆွဲရန်\n/wordbank - Vocabulary ပြန်လေ့ကျင့်ရန်\n/pronunciation - Pronunciation Coach ဖြင့် အသံလေ့ကျင့်ရန်\n/livevoice - Premium voice conversation စရန်\n/endlive - Voice conversation ပြီးဆုံးရန်\n/skillreport - မိမိ English Skill Report ကြည့်ရန်\n/tracks - General, Travel, IELTS, TOEFL, Business, Job Interview track ရွေးရန်\n/nextacademylesson - လက်ရှိ lesson ပြီးပြီး နောက် lesson သွားရန်\n/academyprogress - Level, points, streak, progress ကြည့်ရန်\n/academyreview - ပြီးခဲ့သော lesson ပြန်လေ့ကျင့်ရန်\n/academyassessment - Checkpoint assessment ဖြေရန်\n/academyroleplay - Real-life role-play စရန်\n/academycertificate - Pro completion status ကြည့်ရန်\n/academyreset - Academy progress ပြန်စရန်\n/course - ၁၂ ခန်းပါ အခြေခံသင်တန်းဖွင့်ရန်\n/teacherlesson - Beginner/Academy lesson ကို ဆရာလို အဆင့်လိုက်သင်ရန်\n/mode - Normal, IELTS, Translator Mode ရွေးရန်\n/myid - Telegram ID ကြည့်ရန်\n/privacy - Privacy controls ကြည့်ရန်\n/exportdata - မိမိ learning data export ရယူရန်\n/deletedata - မိမိ learning data ဖျက်ရန်\n/classroom - မိမိ Classroom ကြည့်ရန်\n/classroom_join CODE - ဆရာ့ Classroom ထဲဝင်ရန်\n/teacher - ဆရာအတွက် Teacher Center\n/classroom_create CLASS_NAME - ဆရာက အတန်းဖန်တီးရန်\n/classroom_dashboard CODE - ဆရာက ကျောင်းသားတိုးတက်မှုကြည့်ရန်\n/upgrade USER_ID DAYS - Admin က Premium ကို ကိုယ်တိုင်ဖွင့်ပေးရန်\n\nအောက်က မြန်စာခလုတ်များကို အသုံးပြုပါ။ Academy ထဲမှာ စာသား သို့မဟုတ် အသံပို့ပါ။ ကျွန်တော်က ဆရာလို သင်ပေး၊ ပြင်ပေး၊ Quiz မေးပြီး အကြံပေးပါမယ်။', mainKeyboard()));
+    bot.help((ctx) => ctx.reply('📚 အသုံးပြုနိုင်သော Command များ\n\n/start - Tutor ကိုစတင်ရန်\n/help - ဒီအကူအညီစာမျက်နှာကို ပြရန်\n/learning - အဆင့်လိုက်သင်ယူမှု Menu\n/practice - လေ့ကျင့်ခန်း Menu\n/profile - ကိုယ်ပိုင် Learning Profile\n/recommend - ဒီနေ့ ဆရာ့အကြံပြုချက်\n/errorclinic - အမှားပြန်သင်ခန်းစာ\n/conversation - Conversation Ladder\n/kids - Kids English School စရန်\n/kidslesson - Kids လက်ရှိ Lesson\n/kidspractice - Kids လေ့ကျင့်ခန်း Menu\n/kidsstages - Kids အဆင့်များ\n/kidsmenu - Kids Menu\n/kidsprogress - Kids တိုးတက်မှု\n/kidsreview - Kids Review\n/academy - Speaking Academy ကို စတင်ရန် သို့မဟုတ် ပြန်ဆက်ရန်\n/levels - Free/Premium အဆင့်များကြည့်ရန်\n/academylesson - လက်ရှိ Academy lesson ပြန်ကြည့်ရန်\n/teacherlesson - ဆရာဦးဆောင်သင်ခန်းစာ စရန်\n/homework - ဒီနေ့အိမ်စာကြည့်ရန်\n/academyquiz - လက်ရှိ lesson အတွက် Quiz မေးခွန်းအသစ်ရရန်\n/coach - English Learning Coach ကို မေးမြန်းရန်\n/dailyplan - ဒီနေ့အတွက် ကိုယ်ပိုင် Study Plan ဆွဲရန်\n/wordbank - Vocabulary ပြန်လေ့ကျင့်ရန်\n/pronunciation - Pronunciation Coach ဖြင့် အသံလေ့ကျင့်ရန်\n/livevoice - Premium voice conversation စရန်\n/endlive - Voice conversation ပြီးဆုံးရန်\n/skillreport - မိမိ English Skill Report ကြည့်ရန်\n/tracks - General, Travel, IELTS, TOEFL, Business, Job Interview track ရွေးရန်\n/nextacademylesson - လက်ရှိ lesson ပြီးပြီး နောက် lesson သွားရန်\n/academyprogress - Level, points, streak, progress ကြည့်ရန်\n/academyreview - ပြီးခဲ့သော lesson ပြန်လေ့ကျင့်ရန်\n/academyassessment - Checkpoint assessment ဖြေရန်\n/academyroleplay - Real-life role-play စရန်\n/academycertificate - Pro completion status ကြည့်ရန်\n/academyreset - Academy progress ပြန်စရန်\n/course - ၁၂ ခန်းပါ အခြေခံသင်တန်းဖွင့်ရန်\n/teacherlesson - Beginner/Academy lesson ကို ဆရာလို အဆင့်လိုက်သင်ရန်\n/mode - Normal, IELTS, Translator Mode ရွေးရန်\n/myid - Telegram ID ကြည့်ရန်\n/privacy - Privacy controls ကြည့်ရန်\n/exportdata - မိမိ learning data export ရယူရန်\n/deletedata - မိမိ learning data ဖျက်ရန်\n/classroom - မိမိ Classroom ကြည့်ရန်\n/classroom_join CODE - ဆရာ့ Classroom ထဲဝင်ရန်\n/teacher - ဆရာအတွက် Teacher Center\n/classroom_create CLASS_NAME - ဆရာက အတန်းဖန်တီးရန်\n/classroom_dashboard CODE - ဆရာက ကျောင်းသားတိုးတက်မှုကြည့်ရန်\n/upgrade USER_ID DAYS - Admin က Premium ကို ကိုယ်တိုင်ဖွင့်ပေးရန်\n\nအောက်က မြန်စာခလုတ်များကို အသုံးပြုပါ။ Academy ထဲမှာ စာသား သို့မဟုတ် အသံပို့ပါ။ ကျွန်တော်က ဆရာလို သင်ပေး၊ ပြင်ပေး၊ Quiz မေးပြီး အကြံပေးပါမယ်။', mainKeyboard(ctx.from.id)));
 
-    bot.command('menu', (ctx) => ctx.reply('🏠 ပင်မ Menu', mainKeyboard()));
+    bot.command('menu', (ctx) => ctx.reply('🏠 ပင်မ Menu', mainKeyboard(ctx.from.id)));
     bot.command('learning', (ctx) => ctx.reply('📚 အဆင့်လိုက်သင်ယူမယ့်နေရာကို ရွေးပါ။', learningKeyboard()));
     bot.command('practice', (ctx) => ctx.reply('🧰 လေ့ကျင့်ခန်းအမျိုးအစားကို ရွေးပါ။', practiceKeyboard()));
     bot.command('progressmenu', (ctx) => ctx.reply('📊 တိုးတက်မှုနဲ့ Review ကို ကြည့်ပါ။', progressKeyboard()));
-    bot.command('more', (ctx) => ctx.reply('⚙️ ကိုယ်ရေးအချက်အလက်၊ Mode နဲ့ အခြားဝန်ဆောင်မှုများကို ရွေးပါ။', moreKeyboard()));
+    bot.command('more', (ctx) => ctx.reply('⚙️ ကိုယ်ရေးအချက်အလက်၊ Mode နဲ့ အခြားဝန်ဆောင်မှုများကို ရွေးပါ။', moreKeyboard(ctx.from.id)));
+    bot.command('admin', (ctx) => {
+        if (!isAdminUser(ctx.from.id)) return ctx.reply('🔒 Admin Center ကို Admin account မှသာ အသုံးပြုနိုင်ပါသည်။', mainKeyboard(ctx.from.id));
+        return ctx.reply('🛡️ Admin Center\n\nAdmin-only လုပ်ဆောင်ချက်များကို အောက်ကခလုတ်များမှ ရွေးပါ။', adminKeyboard());
+    });
     bot.command('coursemenu', (ctx) => ctx.reply('🧑‍🏫 Beginner Course Menu\n\nလုပ်ချင်တာကို အောက်ကခလုတ်ကနေ ရွေးပါ။', courseKeyboard()));
     bot.command('privacy_menu', (ctx) => ctx.reply('🔐 Privacy နဲ့ data control ကို ရွေးပါ။', privacyKeyboard()));
     bot.command('classroommenu', async (ctx) => ctx.reply('🏫 Classroom Menu\n\nလုပ်ချင်တာကို အောက်ကခလုတ်ကနေ ရွေးပါ။', classroomKeyboard(Number(ctx.from.id) === Number(ADMIN_ID))));
@@ -1034,19 +1059,19 @@ function setupHandlers(bot) {
         return ctx.reply('🔑 ဆရာပေးထားတဲ့ Classroom code ကို ဒီ chat ထဲမှာ ရိုက်ပို့ပါ။ ဥပမာ: AB12CD', classroomKeyboard(Number(ctx.from.id) === Number(ADMIN_ID)));
     });
     bot.command('classroom_create_prompt', async (ctx) => {
-        if (Number(ctx.from.id) !== Number(ADMIN_ID)) return ctx.reply('🔒 အတန်းဖန်တီးခွင့်ကို ဆရာ account မှသာ အသုံးပြုနိုင်ပါသည်။', mainKeyboard());
+        if (Number(ctx.from.id) !== Number(ADMIN_ID)) return ctx.reply('🔒 အတန်းဖန်တီးခွင့်ကို ဆရာ account မှသာ အသုံးပြုနိုင်ပါသည်။', mainKeyboard(ctx.from.id));
         const progress = await getAcademyProgress(ctx.from.id);
         await saveAcademyProgress(ctx.from.id, { ...progress, navigationSection: 'classroom_create' });
         return ctx.reply('➕ အတန်းအမည်ကို ဒီ chat ထဲမှာ ရိုက်ပို့ပါ။ ဥပမာ: Evening Speaking Class', classroomKeyboard(true));
     });
     bot.command('classroom_dashboard_prompt', async (ctx) => {
-        if (Number(ctx.from.id) !== Number(ADMIN_ID)) return ctx.reply('🔒 Dashboard ကို ဆရာ account မှသာ ကြည့်နိုင်ပါသည်။', mainKeyboard());
+        if (Number(ctx.from.id) !== Number(ADMIN_ID)) return ctx.reply('🔒 Dashboard ကို ဆရာ account မှသာ ကြည့်နိုင်ပါသည်။', mainKeyboard(ctx.from.id));
         const progress = await getAcademyProgress(ctx.from.id);
         await saveAcademyProgress(ctx.from.id, { ...progress, navigationSection: 'classroom_dashboard' });
         return ctx.reply('📊 ကြည့်လိုတဲ့ Classroom code ကို ဒီ chat ထဲမှာ ရိုက်ပို့ပါ။', classroomKeyboard(true));
     });
     bot.command('upgrade_prompt', async (ctx) => {
-        if (Number(ctx.from.id) !== Number(ADMIN_ID)) return ctx.reply('🔒 Premium ဖွင့်ခွင့်ကို Admin account မှသာ အသုံးပြုနိုင်ပါသည်။', mainKeyboard());
+        if (Number(ctx.from.id) !== Number(ADMIN_ID)) return ctx.reply('🔒 Premium ဖွင့်ခွင့်ကို Admin account မှသာ အသုံးပြုနိုင်ပါသည်။', mainKeyboard(ctx.from.id));
         const progress = await getAcademyProgress(ctx.from.id);
         await saveAcademyProgress(ctx.from.id, { ...progress, navigationSection: 'upgrade' });
         return ctx.reply('⭐ Premium ဖွင့်မယ့် User ID နဲ့ ရက်အရေအတွက်ကို ဒီလိုရိုက်ပို့ပါ။\nဥပမာ: 123456789 30', classroomKeyboard(true));
@@ -1054,7 +1079,7 @@ function setupHandlers(bot) {
     bot.command('profile', async (ctx) => {
         const progress = await getAcademyProgress(ctx.from.id);
         if (progress.learnerProfile) {
-            return ctx.reply(`🧭 သင့်ကိုယ်ပိုင်သင်ယူမှု Profile\n\n${profileSummary(progress.learnerProfile)}\n\nဒီ Profile အပေါ်မူတည်ပြီး ဆရာက သင်ကြားနည်းကို အလိုအလျောက်ရွေးပေးပါမယ်။`, profileKeyboard());
+            return ctx.reply(`🧭 သင့်ကိုယ်ပိုင်သင်ယူမှု Profile\n\n${profileSummary(progress.learnerProfile)}\n\nဒီ Profile အပေါ်မူတည်ပြီး ဆရာက သင်ကြားနည်းကို အလိုအလျောက်ရွေးပေးပါမယ်။`, profileKeyboard(ctx.from.id));
         }
         await saveAcademyProgress(ctx.from.id, { ...progress, session: { type: 'profile_setup', step: 'goal', draft: {} } });
         return ctx.reply('🧭 သင့်အတွက် ကိုယ်ပိုင်သင်ကြားမှုလမ်းကြောင်း ဆွဲပေးရန် ရည်မှန်းချက်ကို ရွေးပါ။', profileGoalKeyboard());
@@ -1101,19 +1126,19 @@ function setupHandlers(bot) {
     bot.command('kidslesson', async (ctx) => sendKidsLesson(ctx, await getKidsProgress(ctx.from.id)));
     bot.command('kidspractice', async (ctx) => {
         const progress = await getKidsProgress(ctx.from.id);
-        if (!progress.active) return ctx.reply('Kids English School စရန် /kids ကိုနှိပ်ပါ။', mainKeyboard());
+        if (!progress.active) return ctx.reply('Kids English School စရန် /kids ကိုနှိပ်ပါ။', mainKeyboard(ctx.from.id));
         return ctx.reply('🧰 Kids လေ့ကျင့်ခန်းအတွက် Lesson ကိုရွေးပြီး စာဖြင့်ဖြစ်စေ အသံဖြင့်ဖြစ်စေ ဖြေပါ။', kidsPracticeKeyboard());
     });
     bot.command('kidsstages', (ctx) => ctx.reply(kidsStagesMessage(), kidsReplyKeyboard()));
     bot.command('kidsmenu', (ctx) => ctx.reply('🧒 Kids English School Menu\n\nလုပ်ချင်တာကို အောက်ကခလုတ်ကနေ ရွေးပါ။', kidsReplyKeyboard()));
     bot.command('kidsprogress', async (ctx) => {
         const progress = await getKidsProgress(ctx.from.id);
-        if (!progress.active) return ctx.reply('Kids English School စရန် /kids ကိုနှိပ်ပါ။', mainKeyboard());
+        if (!progress.active) return ctx.reply('Kids English School စရန် /kids ကိုနှိပ်ပါ။', mainKeyboard(ctx.from.id));
         return ctx.reply(kidsProgressMessage(progress), kidsReplyKeyboard());
     });
     bot.command('kidsreview', async (ctx) => {
         const progress = await getKidsProgress(ctx.from.id);
-        if (!progress.active) return ctx.reply('Kids English School စရန် /kids ကိုနှိပ်ပါ။', mainKeyboard());
+        if (!progress.active) return ctx.reply('Kids English School စရန် /kids ကိုနှိပ်ပါ။', mainKeyboard(ctx.from.id));
         if (!progress.completedLessons?.length) return ctx.reply('ပထမ Lesson ကို အရင်သင်ပြီးမှ Review ပြန်လုပ်နိုင်ပါမယ်။', kidsReplyKeyboard());
         const reviewNumber = Math.max(1, Number(progress.lessonNumber || 1) - 1);
         const updated = await saveKidsProgress(ctx.from.id, { ...progress, lessonNumber: reviewNumber, teacherSession: { type: 'kids_lesson', lessonId: String(reviewNumber), phase: 'review', attempts: 0 } });
@@ -1161,13 +1186,13 @@ function setupHandlers(bot) {
     });
     bot.action('menu', async (ctx) => {
         await ctx.answerCbQuery();
-        return ctx.reply('🏠 ပင်မ Menu', mainKeyboard());
+        return ctx.reply('🏠 ပင်မ Menu', mainKeyboard(ctx.from.id));
     });
 
     async function selectMode(ctx, mode, message) {
         try {
             await setUserMode(ctx.from.id, mode);
-            await ctx.reply(message, mainKeyboard());
+            await ctx.reply(message, mainKeyboard(ctx.from.id));
         } catch (error) {
             console.error('Mode selection error:', error.message);
             await ctx.reply('🙏 Mode ကို သိမ်းမရသေးပါ။ ခဏနေပြီး ပြန်စမ်းပါ။');
@@ -1369,7 +1394,7 @@ function setupHandlers(bot) {
         if (!code) return ctx.reply('အသုံးပြုပုံ: /classroom_join CODE\nဥပမာ: /classroom_join AB12CD');
         try {
             const classroom = await joinClassroom(ctx.from.id, code);
-            await ctx.reply(`✅ ${classroom.title} ထဲ ဝင်ပြီးပါပြီ။\nသင့်ဆရာက သင့် Academy တိုးတက်မှုကို အခုကြည့်နိုင်ပါပြီ။`, mainKeyboard());
+            await ctx.reply(`✅ ${classroom.title} ထဲ ဝင်ပြီးပါပြီ။\nသင့်ဆရာက သင့် Academy တိုးတက်မှုကို အခုကြည့်နိုင်ပါပြီ။`, mainKeyboard(ctx.from.id));
         } catch (error) {
             await ctx.reply(error.message === 'CLASSROOM_NOT_FOUND' ? '❌ Classroom code ကို ရှာမတွေ့ပါ။ code ကို ပြန်စစ်ပြီး စမ်းပါ။' : '🙏 Classroom ထဲ အခုဝင်မရသေးပါ။ ခဏနေပြီး ပြန်စမ်းပါ။');
         }
@@ -1582,7 +1607,7 @@ function setupHandlers(bot) {
 
     bot.action('quiz_home', async (ctx) => {
         await ctx.answerCbQuery();
-        await ctx.reply('🏠 ပင်မ Menu', mainKeyboard());
+        await ctx.reply('🏠 ပင်မ Menu', mainKeyboard(ctx.from.id));
     });
 
     bot.action(/^daily_done_(\d+)$/, async (ctx) => {
@@ -1607,7 +1632,7 @@ function setupHandlers(bot) {
 
     bot.action('daily_home', async (ctx) => {
         await ctx.answerCbQuery();
-        await ctx.reply('🏠 ပင်မ Menu', mainKeyboard());
+        await ctx.reply('🏠 ပင်မ Menu', mainKeyboard(ctx.from.id));
     });
 
     bot.action(/^word_answer_(\d+)$/, async (ctx) => {
@@ -1642,7 +1667,7 @@ function setupHandlers(bot) {
 
     bot.action('word_home', async (ctx) => {
         await ctx.answerCbQuery();
-        await ctx.reply('🏠 ပင်မ Menu', mainKeyboard());
+        await ctx.reply('🏠 ပင်မ Menu', mainKeyboard(ctx.from.id));
     });
 
     bot.command('academyreset', async (ctx) => {
@@ -1749,7 +1774,7 @@ function setupHandlers(bot) {
         await ctx.answerCbQuery();
         try {
             await deleteUserData(ctx.from.id);
-            await ctx.reply('✅ သင့် learning data အားလုံးကို ဖျက်ပြီးပါပြီ။', mainKeyboard());
+            await ctx.reply('✅ သင့် learning data အားလုံးကို ဖျက်ပြီးပါပြီ။', mainKeyboard(ctx.from.id));
         } catch (error) {
             console.error('Data deletion error:', error.message);
             await ctx.reply('🙏 သင့် data ကို အခုဖျက်မရသေးပါ။ ခဏနေပြီး ပြန်စမ်းပါ။');
@@ -1762,7 +1787,7 @@ function setupHandlers(bot) {
     });
 
     bot.command('upgrade', async (ctx) => {
-        if (ctx.from.id !== ADMIN_ID) return ctx.reply('❌ ဒီ command ကို Admin account မှသာ အသုံးပြုနိုင်ပါသည်။');
+        if (!isAdminUser(ctx.from.id)) return ctx.reply('❌ ဒီ command ကို Admin account မှသာ အသုံးပြုနိုင်ပါသည်။', mainKeyboard(ctx.from.id));
         const parts = String(ctx.message.text || '').trim().split(/\s+/);
         const targetUserId = parts[1];
         const days = parts[2] || '30';
@@ -1788,7 +1813,7 @@ function setupHandlers(bot) {
             try {
                 await setUserMode(ctx.from.id, mode);
                 await ctx.answerCbQuery();
-                await ctx.reply(message, mainKeyboard());
+                await ctx.reply(message, mainKeyboard(ctx.from.id));
             } catch (error) {
                 console.error('Mode update error:', error.message);
                 await ctx.answerCbQuery('Mode သိမ်းမရသေးပါ။ ပြန်စမ်းပါ။');
@@ -2250,4 +2275,4 @@ function setupHandlers(bot) {
     });
 }
 
-module.exports = { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, learningKeyboard, practiceKeyboard, progressKeyboard, profileKeyboard, courseKeyboard, moreKeyboard, privacyKeyboard, classroomKeyboard, academyKeyboard, modeReplyKeyboard, BUTTONS, normalizeQuiz, quizKeyboard, quizNextKeyboard, normalizeDailyPlan, dailyPlanKeyboard };
+module.exports = { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, learningKeyboard, practiceKeyboard, progressKeyboard, profileKeyboard, courseKeyboard, moreKeyboard, privacyKeyboard, classroomKeyboard, adminKeyboard, academyKeyboard, modeReplyKeyboard, BUTTONS, normalizeQuiz, quizKeyboard, quizNextKeyboard, normalizeDailyPlan, dailyPlanKeyboard, isAdminUser };
