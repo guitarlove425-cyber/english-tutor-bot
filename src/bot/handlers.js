@@ -18,6 +18,12 @@ const {
     isPremiumUser,
     exportUserData,
     deleteUserData,
+    createClassroom,
+    getClassroomByCode,
+    joinClassroom,
+    getTeacherClassrooms,
+    getUserClassrooms,
+    getClassroomDashboard,
     ADMIN_ID
 } = require('../database/firebase');
 const { BEGINNER_COURSE, getLesson: getBeginnerLesson } = require('../course/content');
@@ -51,6 +57,7 @@ const {
     buildQuizFeedbackPrompt,
     buildCoachPrompt,
     buildCoachVoicePrompt,
+    buildLiveVoicePrompt,
     buildPronunciationPrompt,
     buildWordReviewPrompt,
     buildSkillReportPrompt,
@@ -414,7 +421,8 @@ const BUTTONS = {
         mode: '🎛 Tutor Mode',
         help: '❓ Help',
         myid: '🆔 My ID',
-        privacy: '🔐 Privacy'
+        privacy: '🔐 Privacy',
+        classroom: '🏫 Classroom'
     },
     mode: {
         normal: '🧑‍🏫 Normal Tutor',
@@ -432,6 +440,7 @@ const BUTTONS = {
         dailyPlan: '📅 Daily Study Plan',
         wordBank: '📖 My Word Bank',
         pronunciation: '🗣️ Pronunciation Coach',
+        liveVoice: '🎙️ Live Voice',
         report: '📈 Skill Report',
         tracks: '🎯 Learning Tracks',
         assessment: '📝 Assessment',
@@ -445,7 +454,8 @@ function mainKeyboard() {
         [BUTTONS.main.academy, BUTTONS.main.levels],
         [BUTTONS.main.beginner, BUTTONS.main.progress],
         [BUTTONS.main.mode, BUTTONS.main.help],
-        [BUTTONS.main.myid, BUTTONS.main.privacy]
+        [BUTTONS.main.myid, BUTTONS.main.privacy],
+        [BUTTONS.main.classroom]
     ]).resize().persistent();
 }
 
@@ -456,8 +466,9 @@ function academyKeyboard() {
         [BUTTONS.academy.roleplay, BUTTONS.academy.quiz],
         [BUTTONS.academy.coach, BUTTONS.academy.dailyPlan],
         [BUTTONS.academy.wordBank, BUTTONS.academy.pronunciation],
-        [BUTTONS.academy.report, BUTTONS.academy.tracks],
-        [BUTTONS.academy.assessment, BUTTONS.academy.certificate],
+        [BUTTONS.academy.liveVoice, BUTTONS.academy.report],
+        [BUTTONS.academy.tracks, BUTTONS.academy.assessment],
+        [BUTTONS.academy.certificate],
         [BUTTONS.academy.home]
     ]).resize().persistent();
 }
@@ -507,6 +518,7 @@ function setupButtonRouting(bot) {
         [BUTTONS.main.help, '/help'],
         [BUTTONS.main.myid, '/myid'],
         [BUTTONS.main.privacy, '/privacy'],
+        [BUTTONS.main.classroom, '/classroom'],
         [BUTTONS.mode.normal, '/mode_normal'],
         [BUTTONS.mode.ielts, '/mode_ielts'],
         [BUTTONS.mode.translator, '/mode_translator'],
@@ -520,6 +532,7 @@ function setupButtonRouting(bot) {
         [BUTTONS.academy.dailyPlan, '/dailyplan'],
         [BUTTONS.academy.wordBank, '/wordbank'],
         [BUTTONS.academy.pronunciation, '/pronunciation'],
+        [BUTTONS.academy.liveVoice, '/livevoice'],
         [BUTTONS.academy.report, '/skillreport'],
         [BUTTONS.academy.tracks, '/tracks'],
         [BUTTONS.academy.assessment, '/academyassessment'],
@@ -537,7 +550,7 @@ function setupHandlers(bot) {
         await ctx.reply(`Hello ${ctx.from.first_name || 'there'}!\n\nI am LinguistPro, your AI English Tutor.\n\nCurrent mode: ${mode}\n\nFor a complete step-by-step journey from beginner to Pro, send /academy. For the original beginner lessons, send /course.\nUse the quick buttons below or /help for all commands.`, mainKeyboard());
     });
 
-    bot.help((ctx) => ctx.reply('Commands:\n/start - Start the tutor\n/help - Show help\n/academy - Start or resume the full Speaking Academy\n/levels - View Free and Premium levels\n/academylesson - Show the current Academy lesson\n/academyquiz - Get a fresh lesson quiz question\n/coach - Ask the English Learning Coach anything\n/dailyplan - Generate today’s level-based study plan\n/wordbank - Review vocabulary with spaced repetition\n/pronunciation - Practice with the Pronunciation Coach\n/skillreport - View your English skill report\n/tracks - Choose General, Travel, IELTS, TOEFL, Business, or Job Interview\n/nextacademylesson - Complete the current Academy lesson\n/academyprogress - View level, points, streak, and progress\n/academyreview - Review a completed lesson\n/academyassessment - Take a checkpoint assessment\n/academyroleplay - Start a realistic role-play\n/academycertificate - View Pro completion status\n/academyreset - Reset Academy progress\n/course - Open the original 12-lesson beginner course\n/mode - Choose Normal, IELTS, or Translator mode\n/myid - Show your Telegram ID\n/privacy - View privacy controls\n/exportdata - Export your learning data\n/deletedata - Permanently delete your learning data\n/upgrade USER_ID DAYS - Admin only\n\nUse the quick buttons below. In Academy practice, send text or voice and I will teach, correct, quiz, and coach you like a personal teacher.', mainKeyboard()));
+    bot.help((ctx) => ctx.reply('Commands:\n/start - Start the tutor\n/help - Show help\n/academy - Start or resume the full Speaking Academy\n/levels - View Free and Premium levels\n/academylesson - Show the current Academy lesson\n/academyquiz - Get a fresh lesson quiz question\n/coach - Ask the English Learning Coach anything\n/dailyplan - Generate today’s level-based study plan\n/wordbank - Review vocabulary with spaced repetition\n/pronunciation - Practice with the Pronunciation Coach\n/livevoice - Start a Premium multi-turn voice conversation\n/endlive - End the live voice session\n/skillreport - View your English skill report\n/tracks - Choose General, Travel, IELTS, TOEFL, Business, or Job Interview\n/nextacademylesson - Complete the current Academy lesson\n/academyprogress - View level, points, streak, and progress\n/academyreview - Review a completed lesson\n/academyassessment - Take a checkpoint assessment\n/academyroleplay - Start a realistic role-play\n/academycertificate - View Pro completion status\n/academyreset - Reset Academy progress\n/course - Open the original 12-lesson beginner course\n/mode - Choose Normal, IELTS, or Translator mode\n/myid - Show your Telegram ID\n/privacy - View privacy controls\n/exportdata - Export your learning data\n/deletedata - Permanently delete your learning data\n/classroom - View your classroom(s)\n/classroom_join CODE - Join a teacher classroom\n/teacher - Teacher Center for the configured admin\n/classroom_create CLASS_NAME - Teacher-only class creation\n/classroom_dashboard CODE - Teacher-only student dashboard\n/upgrade USER_ID DAYS - Admin only\n\nUse the quick buttons below. In Academy practice, send text or voice and I will teach, correct, quiz, and coach you like a personal teacher.', mainKeyboard()));
 
     bot.command('menu', (ctx) => ctx.reply('🏠 Main menu', mainKeyboard()));
 
@@ -643,6 +656,27 @@ function setupHandlers(bot) {
         }
     });
 
+    bot.command('livevoice', async (ctx) => {
+        try {
+            const progress = await getAcademyProgress(ctx.from.id);
+            if (!progress.active) return ctx.reply('Send /academy first so I can start a conversation at your level.');
+            if (!(await hasAcademyAccess(ctx, progress.levelId))) return;
+            await saveAcademyProgress(ctx.from.id, { ...progress, session: { type: 'live_voice', turns: 0, startedAt: new Date().toISOString() } });
+            const track = getTrack(progress.trackId);
+            await ctx.reply(`🎙️ Live Voice Conversation is ready.\n\nTrack: ${track.title}\nSend a voice message in English. I will reply naturally, ask one question, and keep the conversation moving.\n\nUse /endlive when you want to finish and receive a short summary.`, academyKeyboard());
+        } catch (error) {
+            console.error('Live voice start error:', error.message);
+            await ctx.reply('🙏 I could not start Live Voice Conversation right now.');
+        }
+    });
+
+    bot.command('endlive', async (ctx) => {
+        const progress = await getAcademyProgress(ctx.from.id);
+        const turns = progress.session?.type === 'live_voice' ? Number(progress.session.turns || 0) : 0;
+        await saveAcademyProgress(ctx.from.id, { ...progress, session: null });
+        await ctx.reply(`🎙️ Live Voice Conversation ended.\nTurns completed: ${turns}\nKeep practicing tomorrow to build fluency and confidence.`, academyKeyboard());
+    });
+
     bot.command('skillreport', async (ctx) => {
         try {
             const progress = await getAcademyProgress(ctx.from.id);
@@ -681,6 +715,73 @@ function setupHandlers(bot) {
         } catch (error) {
             console.error('Track selection error:', error.message);
             await ctx.reply('🙏 I could not save that learning track right now.');
+        }
+    });
+
+    bot.command('classroom', async (ctx) => {
+        try {
+            const teacher = Number(ctx.from.id) === Number(ADMIN_ID);
+            if (teacher) {
+                const classes = await getTeacherClassrooms(ctx.from.id);
+                const text = classes.length
+                    ? `👩‍🏫 Your classrooms\n\n${classes.map((item) => `• ${item.title} — code: ${item.code} — ${item.students.length} student(s)`).join('\n')}`
+                    : '👩‍🏫 You have no classrooms yet. Use /classroom_create CLASS_NAME.';
+                return ctx.reply(`${text}\n\nUse /classroom_dashboard CODE to view student progress.`, mainKeyboard());
+            }
+            const classes = await getUserClassrooms(ctx.from.id);
+            return ctx.reply(classes.length
+                ? `🏫 Your classrooms\n\n${classes.map((item) => `• ${item.title} — ${item.code}`).join('\n')}\n\nYour teacher can monitor your Academy progress.`
+                : '🏫 You are not in a classroom yet. Ask your teacher for a code, then use /classroom_join CODE.', mainKeyboard());
+        } catch (error) {
+            console.error('Classroom list error:', error.message);
+            await ctx.reply('🙏 I could not load classroom information right now.');
+        }
+    });
+
+    bot.command('teacher', (ctx) => {
+        if (Number(ctx.from.id) !== Number(ADMIN_ID)) return ctx.reply('🔒 Teacher tools are available to the configured teacher account.');
+        return ctx.reply('👩‍🏫 Teacher Center\n\n/classroom_create CLASS_NAME — create a class\n/classroom — list your classes\n/classroom_dashboard CODE — view student progress\n/upgrade USER_ID DAYS — manually activate Premium', mainKeyboard());
+    });
+
+    bot.command('classroom_create', async (ctx) => {
+        if (Number(ctx.from.id) !== Number(ADMIN_ID)) return ctx.reply('🔒 Only the configured teacher account can create classrooms.');
+        const title = String(ctx.message.text || '').replace(/^\/classroom_create\s*/i, '').trim();
+        if (!title) return ctx.reply('Usage: /classroom_create CLASS_NAME\nExample: /classroom_create Evening Speaking Class');
+        try {
+            const classroom = await createClassroom(ctx.from.id, title);
+            await ctx.reply(`✅ Classroom created\n\nName: ${classroom.title}\nJoin code: ${classroom.code}\n\nShare this code with students. They can join with /classroom_join ${classroom.code}`);
+        } catch (error) {
+            console.error('Classroom create error:', error.message);
+            await ctx.reply('🙏 I could not create that classroom right now.');
+        }
+    });
+
+    bot.command('classroom_join', async (ctx) => {
+        const code = String(ctx.message.text || '').replace(/^\/classroom_join\s*/i, '').trim();
+        if (!code) return ctx.reply('Usage: /classroom_join CODE\nExample: /classroom_join AB12CD');
+        try {
+            const classroom = await joinClassroom(ctx.from.id, code);
+            await ctx.reply(`✅ You joined ${classroom.title}.\nYour teacher can now see your Academy progress.`, mainKeyboard());
+        } catch (error) {
+            await ctx.reply(error.message === 'CLASSROOM_NOT_FOUND' ? '❌ Classroom code not found. Check the code and try again.' : '🙏 I could not join that classroom right now.');
+        }
+    });
+
+    bot.command('classroom_dashboard', async (ctx) => {
+        if (Number(ctx.from.id) !== Number(ADMIN_ID)) return ctx.reply('🔒 Only the configured teacher account can view classroom dashboards.');
+        const code = String(ctx.message.text || '').replace(/^\/classroom_dashboard\s*/i, '').trim();
+        if (!code) return ctx.reply('Usage: /classroom_dashboard CODE');
+        try {
+            const classroom = await getClassroomByCode(code);
+            if (!classroom || String(classroom.teacherId) !== String(ctx.from.id)) return ctx.reply('❌ That classroom was not found under your teacher account.');
+            const dashboard = await getClassroomDashboard(classroom);
+            const rows = dashboard.students.length
+                ? dashboard.students.map((student) => `• ${student.userId} — ${student.levelId} — ${student.completionPercent}% complete — ${student.quizAccuracy}% quiz — ${student.points} pts — streak ${student.streak}`).join('\n')
+                : 'No students have joined yet.';
+            await replyLongText(ctx, `📊 ${dashboard.title}\n\nJoin code: ${dashboard.code}\nStudents: ${dashboard.studentCount}\nActive: ${dashboard.activeStudents}\nAverage completion: ${dashboard.averageCompletion}%\n\n${rows}`);
+        } catch (error) {
+            console.error('Classroom dashboard error:', error.message);
+            await ctx.reply('🙏 I could not load that classroom dashboard right now.');
         }
     });
 
@@ -1036,6 +1137,10 @@ function setupHandlers(bot) {
                 return;
             }
 
+            if (sessionType === 'live_voice') {
+                return ctx.reply('🎙️ Live Voice Conversation needs a voice message. Send your answer by voice, or use /endlive to finish.');
+            }
+
             if (sessionType === 'pronunciation') {
                 return ctx.reply('🗣️ Please send a voice message so I can analyze your pronunciation.');
             }
@@ -1142,6 +1247,17 @@ function setupHandlers(bot) {
                 await replyLongText(ctx, `✅ Voice placement complete.\nRecommended level: ${getLevel(recommended).title} (${getLevel(recommended).cefr})\nStarting level: ${getLevel(chosenLevel).title} (${getLevel(chosenLevel).cefr})\nConfidence: ${placement.confidence || 0}%${premiumBlocked ? '\n\nYour recommended level is part of Premium Academy. Upgrade to unlock it.' : ''}`);
                 await sendAcademyLesson(ctx, updated);
                 return;
+            }
+
+            if (sessionType === 'live_voice') {
+                const level = getLevel(academy.levelId);
+                const track = getTrack(academy.trackId);
+                const turns = Number(academy.session.turns || 0);
+                const replyMessage = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildLiveVoicePrompt(level, track, turns));
+                const updated = await saveAcademyProgress(ctx.from.id, { ...academy, session: { ...academy.session, type: 'live_voice', turns: turns + 1 }, practiceAttempts: Number(academy.practiceAttempts || 0) + 1, speakingAttempts: Number(academy.speakingAttempts || 0) + 1, points: Number(academy.points || 0) + 15, speakingScore: Math.max(Number(academy.speakingScore || 0), 50) });
+                await replyLongText(ctx, replyMessage);
+                await sendEnglishVoiceReply(ctx, replyMessage);
+                return updated;
             }
 
             if (sessionType === 'pronunciation') {

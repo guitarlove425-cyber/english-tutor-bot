@@ -14,12 +14,16 @@ const {
     saveCourseProgress,
     saveAcademyProgress,
     exportUserData,
-    deleteUserData
+    deleteUserData,
+    createClassroom,
+    joinClassroom,
+    getClassroomDashboard
 } = require('../src/database/firebase');
 const { BEGINNER_COURSE, getLesson } = require('../src/course/content');
 const { LEVELS, getLesson: getAcademyLesson, getNextLesson, levelIsPremium } = require('../src/academy/curriculum');
 const { seedWordBank, getDueWords, reviewWord, skillReport } = require('../src/academy/learning');
 const { TRACKS, getTrack, trackIsPremium } = require('../src/academy/tracks');
+const { normalizeClassCode, studentSummary } = require('../src/classroom/classroom');
 
 test('splitMessage keeps Telegram chunks under the configured limit', () => {
     const chunks = splitMessage('a'.repeat(8000), 3900);
@@ -145,6 +149,20 @@ test('academy progress persists placement, points, assessment, and reset in memo
     assert.equal(reset.levelId, 'starter');
 });
 
+test('classrooms support teacher creation, student joining, and dashboard summaries', async () => {
+    const teacherId = `teacher-${Date.now()}`;
+    const studentId = `student-${Date.now()}`;
+    const classroom = await createClassroom(teacherId, 'Speaking Class');
+    assert.equal(normalizeClassCode(` ${classroom.code.toLowerCase()} `), classroom.code);
+    await saveAcademyProgress(studentId, { active: true, levelId: 'elementary', completedLessons: [1, 2], quizAnswered: 4, quizCorrect: 3, points: 80, streak: 2 });
+    const joined = await joinClassroom(studentId, classroom.code);
+    assert.equal(joined.students.includes(studentId), true);
+    const dashboard = await getClassroomDashboard(joined);
+    assert.equal(dashboard.studentCount, 1);
+    assert.equal(dashboard.students[0].quizAccuracy, 75);
+    assert.equal(studentSummary({ active: true, completedLessons: [1] }, studentId).completionPercent, 3);
+});
+
 test('privacy export and deletion remove learner records in memory fallback', async () => {
     const userId = `privacy-${Date.now()}`;
     await saveCourseProgress(userId, { active: true, currentLesson: 3 });
@@ -187,7 +205,7 @@ test('Academy Telegram handlers register all public flows', () => {
         telegram: { sendMessage: async () => {} }
     };
     setupHandlers(fakeBot);
-    for (const command of ['academy', 'levels', 'academylesson', 'academyquiz', 'coach', 'dailyplan', 'wordbank', 'pronunciation', 'skillreport', 'tracks', 'privacy', 'exportdata', 'deletedata', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
+    for (const command of ['academy', 'levels', 'academylesson', 'academyquiz', 'coach', 'dailyplan', 'wordbank', 'pronunciation', 'livevoice', 'endlive', 'skillreport', 'tracks', 'privacy', 'classroom', 'teacher', 'classroom_create', 'classroom_join', 'classroom_dashboard', 'exportdata', 'deletedata', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
         assert.ok(registered.commands.includes(command), `missing /${command}`);
     }
     assert.ok(registered.events.includes('text'));
@@ -206,4 +224,6 @@ test('Academy Telegram handlers register all public flows', () => {
     assert.ok(registered.hears.includes(BUTTONS.academy.report));
     assert.ok(registered.hears.includes(BUTTONS.academy.tracks));
     assert.ok(registered.hears.includes(BUTTONS.main.privacy));
+    assert.ok(registered.hears.includes(BUTTONS.main.classroom));
+    assert.ok(registered.hears.includes(BUTTONS.academy.liveVoice));
 });

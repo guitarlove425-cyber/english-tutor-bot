@@ -3,6 +3,7 @@ const path = require('path');
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { config } = require('../config');
+const { normalizeClassCode, classroomCode, studentSummary, classroomSummary } = require('../classroom/classroom');
 
 function loadServiceAccount() {
     if (config.FIREBASE_SERVICE_ACCOUNT_JSON) {
@@ -25,6 +26,7 @@ let db = null;
 let firebaseEnabled = false;
 const memoryUsers = new Map();
 const memoryDailyUsage = new Map();
+const memoryClassrooms = new Map();
 
 try {
     const serviceAccount = loadServiceAccount();
@@ -285,6 +287,95 @@ async function isPremiumUser(userId) {
     return Boolean(userData.isPremium && userData.premiumExpiry && new Date(userData.premiumExpiry) > new Date());
 }
 
+function defaultClassroom(teacherId, title, code) {
+    return {
+        id: `class_${code}`,
+        code,
+        title: String(title || 'English Classroom').trim().slice(0, 80),
+        teacherId: String(teacherId),
+        students: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+    };
+}
+
+async function createClassroom(teacherId, title) {
+    let code = classroomCode();
+    if (firebaseEnabled) {
+        const collection = db.collection('classrooms');
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+            const existing = await collection.where('code', '==', code).limit(1).get();
+            if (existing.empty) break;
+            code = classroomCode(Date.now() + attempt);
+        }
+        const ref = collection.doc();
+        const data = { ...defaultClassroom(teacherId, title, code), id: ref.id };
+        await ref.set(data);
+        return data;
+    }
+    while ([...memoryClassrooms.values()].some((classroom) => classroom.code === code)) code = classroomCode(Date.now());
+    const data = defaultClassroom(teacherId, title, code);
+    memoryClassrooms.set(data.id, data);
+    return data;
+}
+
+async function getClassroomByCode(value) {
+    const code = normalizeClassCode(value);
+    if (!code) return null;
+    if (firebaseEnabled) {
+        const snapshot = await db.collection('classrooms').where('code', '==', code).limit(1).get();
+        return snapshot.empty ? null : snapshot.docs[0].data();
+    }
+    return [...memoryClassrooms.values()].find((classroom) => classroom.code === code) || null;
+}
+
+async function joinClassroom(userId, value) {
+    const classroom = await getClassroomByCode(value);
+    if (!classroom) throw new Error('CLASSROOM_NOT_FOUND');
+    const userKey = String(userId);
+    if (userKey === String(classroom.teacherId)) return classroom;
+    if (firebaseEnabled) {
+        const ref = db.collection('classrooms').doc(classroom.id);
+        const updated = await db.runTransaction(async (transaction) => {
+            const snapshot = await transaction.get(ref);
+            if (!snapshot.exists) throw new Error('CLASSROOM_NOT_FOUND');
+            const data = snapshot.data();
+            const students = [...new Set([...(data.students || []), userKey])];
+            const next = { ...data, students, updatedAt: new Date().toISOString() };
+            transaction.set(ref, next, { merge: true });
+            return next;
+        });
+        return updated;
+    }
+    const next = { ...classroom, students: [...new Set([...(classroom.students || []), userKey])], updatedAt: new Date().toISOString() };
+    memoryClassrooms.set(classroom.id, next);
+    return next;
+}
+
+async function getTeacherClassrooms(teacherId) {
+    const teacherKey = String(teacherId);
+    if (firebaseEnabled) {
+        const snapshot = await db.collection('classrooms').where('teacherId', '==', teacherKey).get();
+        return snapshot.docs.map((doc) => doc.data());
+    }
+    return [...memoryClassrooms.values()].filter((classroom) => String(classroom.teacherId) === teacherKey);
+}
+
+async function getUserClassrooms(userId) {
+    const userKey = String(userId);
+    if (firebaseEnabled) {
+        const snapshot = await db.collection('classrooms').where('students', 'array-contains', userKey).get();
+        return snapshot.docs.map((doc) => doc.data());
+    }
+    return [...memoryClassrooms.values()].filter((classroom) => (classroom.students || []).includes(userKey));
+}
+
+async function getClassroomDashboard(classroom) {
+    const studentIds = classroom?.students || [];
+    const progress = await Promise.all(studentIds.map(async (studentId) => studentSummary(await getAcademyProgress(studentId), studentId)));
+    return classroomSummary(classroom, progress);
+}
+
 async function exportUserData(userId) {
     const userKey = String(userId);
     if (firebaseEnabled) {
@@ -315,10 +406,25 @@ async function deleteUserData(userId) {
             db.collection('course_progress').doc(userKey).delete(),
             db.collection('academy_progress').doc(userKey).delete()
         ]);
+        const owned = await db.collection('classrooms').where('teacherId', '==', userKey).get();
+        const joined = await db.collection('classrooms').where('students', 'array-contains', userKey).get();
+        const batch = db.batch();
+        owned.docs.forEach((doc) => batch.delete(doc.ref));
+        joined.docs.forEach((doc) => {
+            if (!owned.docs.some((ownedDoc) => ownedDoc.id === doc.id)) {
+                const students = (doc.data().students || []).filter((studentId) => String(studentId) !== userKey);
+                batch.update(doc.ref, { students, updatedAt: new Date().toISOString() });
+            }
+        });
+        await batch.commit();
     }
     memoryUsers.delete(userKey);
     for (const key of memoryDailyUsage.keys()) {
         if (key.startsWith(`${userKey}_`)) memoryDailyUsage.delete(key);
+    }
+    for (const [classroomId, classroom] of memoryClassrooms.entries()) {
+        if (String(classroom.teacherId) === userKey) memoryClassrooms.delete(classroomId);
+        else if ((classroom.students || []).includes(userKey)) memoryClassrooms.set(classroomId, { ...classroom, students: classroom.students.filter((studentId) => String(studentId) !== userKey) });
     }
     return true;
 }
@@ -338,6 +444,12 @@ module.exports = {
     startAcademy,
     resetAcademy,
     isPremiumUser,
+    createClassroom,
+    getClassroomByCode,
+    joinClassroom,
+    getTeacherClassrooms,
+    getUserClassrooms,
+    getClassroomDashboard,
     exportUserData,
     deleteUserData,
     isFirebaseEnabled,

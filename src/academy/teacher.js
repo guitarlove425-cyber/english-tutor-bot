@@ -125,6 +125,11 @@ function buildCoachVoicePrompt(level) {
     return `You are an English Learning Coach for a Myanmar learner at ${level.title} (${level.cefr}). Listen to the learner's voice question or speaking attempt. Reply directly, transcribe the important sentence, correct one key issue, explain it briefly in Burmese, give one pronunciation or fluency tip, and ask one helpful follow-up question. Be warm and practical.`;
 }
 
+function buildLiveVoicePrompt(level, track, turns = 0) {
+    return `You are a live English speaking partner and coach for a Myanmar learner at ${level.title} (${level.cefr}) on the ${track.title} track. This is conversation turn ${turns + 1}.
+Listen to the voice message and respond as if speaking naturally in real time. Keep your reply concise: one natural in-character response, one short Burmese coaching note with at most one correction, and one next question. Do not give a long lesson and do not end the conversation. Encourage the learner to speak again.`;
+}
+
 function buildPronunciationPrompt(level, lesson) {
     return `You are a careful English pronunciation coach for a Myanmar learner at ${level.title} (${level.cefr}). Analyze this voice attempt in relation to the lesson ${lesson ? lesson.title : 'speaking practice'}.
 Return JSON only: {"score":0,"clarity":0,"sounds":[{"word":"...","issue":"...","tip":"..."}],"stressTip":"...","correctedSentence":"...","repeatTask":"..."}.
@@ -176,6 +181,7 @@ module.exports = {
     buildQuizFeedbackPrompt,
     buildCoachPrompt,
     buildCoachVoicePrompt,
+    buildLiveVoicePrompt,
     buildPronunciationPrompt,
     buildWordReviewPrompt,
     buildSkillReportPrompt,

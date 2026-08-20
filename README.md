@@ -26,6 +26,10 @@ The Word Bank automatically collects vocabulary from Academy lessons and schedul
 
 Privacy controls are available through `/privacy`, `/exportdata`, and `/deletedata`. Export returns the stored profile and learning records; deletion requires an explicit confirmation button and removes the user mode, Premium record, original course progress, Academy progress, Word Bank, diagnostics, quizzes, and daily plans. The deletion path is designed as a user-controlled data lifecycle feature rather than an automatic destructive action.
 
+The configured admin account also has a Teacher Center. `/classroom_create CLASS_NAME` creates a classroom and returns a six-character join code. Students join with `/classroom_join CODE`; `/classroom` lists the learner's classes, while `/classroom_dashboard CODE` shows student count, active learners, average completion, level, quiz accuracy, points, speaking activity, and streak. The classroom dashboard reads Academy progress only and keeps payment manual through the existing `/upgrade USER_ID DAYS` command.
+
+`/livevoice` opens a Premium multi-turn voice conversation. The learner sends voice messages, the AI replies naturally with one short coaching note and a follow-up question, and the session remains active until `/endlive`. This is a reliable Telegram voice-turn workflow rather than a browser WebRTC call; it works with the existing Gemini audio integration and persists the number of turns and speaking activity.
+
 ### Original Beginner Speaking Course
 
 The `/course` command remains available as a lighter 12-lesson path from greetings and introductions through daily routines, questions, shopping, directions, and a final real-life conversation. It is useful for learners who want a short path instead of the full Academy.
@@ -100,7 +104,8 @@ The bot uses the following collections:
 | `users` | Premium status, Premium expiry, and the user's selected mode |
 | `user_daily_usage` | Per-user UTC date and request count for the free limit |
 | `course_progress` | Current lesson, completed lessons, practice attempts, and speaking attempts for the original course |
-| `academy_progress` | Placement, CEFR level, current lesson, completed lessons, points, streaks, assessments, role-play, quiz state/statistics, Learning Coach session state, daily-plan completion, Word Bank, pronunciation diagnostics, and skill scores |
+| `academy_progress` | Placement, CEFR level, current lesson, completed lessons, points, streaks, assessments, role-play, quiz state/statistics, Learning Coach session state, daily-plan completion, Word Bank, pronunciation diagnostics, skill scores, selected track, and live-voice session state |
+| `classrooms` | Teacher-owned classroom metadata, join codes, and student Telegram IDs for progress dashboards |
 
 Usage increments use a Firestore transaction, preventing simultaneous requests from bypassing the daily limit.
 
@@ -120,6 +125,7 @@ src/academy/curriculum.js  Six-level, 36-lesson Starter-to-Pro curriculum
 src/academy/teacher.js     Placement, lesson, quiz, coach, daily-plan, Word Bank review, pronunciation, assessment, role-play, and feedback prompts
 src/academy/learning.js     Spaced repetition scheduling and skill-score helpers
 src/academy/tracks.js      Free and Premium learning-track catalog
+src/classroom/classroom.js Classroom codes and student-summary helpers
 src/ai/gemini.js            Gemini personas and text/audio generation
 src/database/firebase.js   Firestore persistence and in-memory local fallback
 check.js                  Gemini model availability checker
