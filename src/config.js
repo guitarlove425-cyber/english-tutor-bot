@@ -8,7 +8,7 @@ function getOptional(name) {
 const config = {
     BOT_TOKEN: getOptional('BOT_TOKEN'),
     GEMINI_API_KEY: getOptional('GEMINI_API_KEY'),
-    GEMINI_MODEL: getOptional('GEMINI_MODEL') || 'gemini-flash-latest',
+    GEMINI_MODEL: getOptional('GEMINI_MODEL') || 'gemini-3.5-flash',
     GEMINI_FALLBACK_MODEL: getOptional('GEMINI_FALLBACK_MODEL') || 'gemini-2.5-flash',
     PORT: Number.parseInt(process.env.PORT || '3000', 10) || 3000,
     ADMIN_ID: Number.parseInt(process.env.ADMIN_ID || process.env.ADMIN_TELEGRAM_ID || '0', 10),

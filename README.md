@@ -52,6 +52,7 @@ Edit `.env` and provide at least:
 ```env
 BOT_TOKEN=your_telegram_bot_token
 GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-3.5-flash
 # Optional: automatic fallback for temporary Gemini overloads
 GEMINI_FALLBACK_MODEL=gemini-2.5-flash
 ADMIN_ID=your_telegram_user_id
@@ -93,7 +94,7 @@ The health endpoint is available at `http://localhost:3000/` or the port specifi
 
 ## Render deployment
 
-Create a Render Web Service connected to this repository. Use `npm install` as the build command and `npm start` as the start command. Add `BOT_TOKEN`, `GEMINI_API_KEY`, `ADMIN_ID`, `FIREBASE_SERVICE_ACCOUNT_JSON`, and optionally `GEMINI_FALLBACK_MODEL=gemini-2.5-flash` as Render environment secrets. Render supplies `PORT` automatically. The service health endpoint is `/`.
+Create a Render Web Service connected to this repository. Use `npm install` as the build command and `npm start` as the start command. Add `BOT_TOKEN`, `GEMINI_API_KEY`, `ADMIN_ID`, `FIREBASE_SERVICE_ACCOUNT_JSON`, and optionally `GEMINI_FALLBACK_MODEL=gemini-2.5-flash` as Render environment secrets. The recommended primary is stable `gemini-3.5-flash`; the fallback is stable `gemini-2.5-flash`. Render supplies `PORT` automatically. The service health endpoint is `/`.
 
 Telegram polling requires only one running instance of the bot. Do not run the same bot token in two production services at the same time, or Telegram will reject one polling connection.
 
