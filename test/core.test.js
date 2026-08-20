@@ -27,6 +27,18 @@ const { normalizeClassCode, studentSummary } = require('../src/classroom/classro
 const { buildAcademyTextPrompt, buildCoachPrompt, buildDailyPlanPrompt, buildTeacherPhasePrompt, buildRemediationPrompt } = require('../src/academy/teacher');
 const { createTeacherSession, advanceTeacherSession, normalizeHomework, completeHomework, scheduleReview, getDueReviews, completeReview } = require('../src/academy/session');
 const { errorStatus, isTransientError, retryDelayMs, modelCandidates } = require('../src/ai/gemini');
+const { normalizeLearnerProfile, recommendTeachingMode, profileSummary } = require('../src/academy/orchestrator');
+
+test('learner profiles normalize safely and orchestrator recommendations target weak skills', () => {
+    const profile = normalizeLearnerProfile({ goal: 'exam', dailyMinutes: 300, preferredPractice: 'voice', confidence: 'low' });
+    assert.equal(profile.goal, 'exam');
+    assert.equal(profile.dailyMinutes, 120);
+    assert.equal(profile.preferredPractice, 'voice');
+    assert.match(profileSummary(profile), /IELTS\/TOEFL/);
+    const recommendation = recommendTeachingMode({ learnerProfile: profile, speakingScore: 30, pronunciationScore: 50, fluencyScore: 40, consistencyScore: 30 });
+    assert.equal(recommendation.mode, 'confidence_builder');
+    assert.ok(Array.isArray(recommendation.weakSkills));
+});
 
 test('Gemini transient errors are recognized and retry delays remain bounded', () => {
     assert.equal(errorStatus({ message: 'Service unavailable [503]' }), 503);
@@ -256,12 +268,15 @@ test('Academy Telegram handlers register all public flows', () => {
         telegram: { sendMessage: async () => {} }
     };
     setupHandlers(fakeBot);
-    for (const command of ['academy', 'levels', 'academylesson', 'teacherlesson', 'homework', 'academyquiz', 'coach', 'dailyplan', 'wordbank', 'pronunciation', 'livevoice', 'endlive', 'skillreport', 'tracks', 'privacy', 'classroom', 'teacher', 'classroom_create', 'classroom_join', 'classroom_dashboard', 'exportdata', 'deletedata', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
+    for (const command of ['academy', 'learning', 'practice', 'profile', 'recommend', 'errorclinic', 'conversation', 'levels', 'academylesson', 'teacherlesson', 'homework', 'academyquiz', 'coach', 'dailyplan', 'wordbank', 'pronunciation', 'livevoice', 'endlive', 'skillreport', 'tracks', 'privacy', 'classroom', 'teacher', 'classroom_create', 'classroom_join', 'classroom_dashboard', 'exportdata', 'deletedata', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
         assert.ok(registered.commands.includes(command), `missing /${command}`);
     }
     assert.ok(registered.events.includes('text'));
     assert.ok(registered.events.includes('voice'));
     assert.ok(registered.hears.includes('🏫 Speaking Academy'));
+    assert.ok(registered.hears.includes(BUTTONS.main.learning));
+    assert.ok(registered.hears.includes(BUTTONS.main.practice));
+    assert.ok(registered.hears.includes(BUTTONS.main.profile));
     assert.ok(registered.hears.includes('📘 ဒီသင်ခန်းစာ'));
     assert.ok(registered.hears.includes('➡️ နောက်သင်ခန်းစာ'));
     assert.ok(registered.hears.includes(BUTTONS.mode.normal));

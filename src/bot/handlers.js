@@ -67,8 +67,17 @@ const {
     buildDailyPlanPrompt,
     buildTeacherPhasePrompt,
     buildRemediationPrompt,
+    buildLearnerProfilePrompt,
+    buildOrchestratorPrompt,
+    buildErrorClinicPrompt,
+    buildConversationLadderPrompt,
     buildAssessmentPrompt
 } = require('../academy/teacher');
+const {
+    normalizeLearnerProfile,
+    profileSummary,
+    recommendTeachingMode
+} = require('../academy/orchestrator');
 const {
     createTeacherSession,
     normalizeTeacherSession,
@@ -605,14 +614,20 @@ async function completeDailyPlanTask(ctx, index) {
 const BUTTONS = {
     main: {
         academy: '🏫 Speaking Academy',
+        learning: '📚 အဆင့်လိုက်သင်ယူမယ်',
+        today: '📘 ဒီနေ့သင်မယ်',
+        practice: '🧰 လေ့ကျင့်ခန်းများ',
+        profile: '🧭 ကိုယ်ပိုင်လမ်းကြောင်း',
+        more: '⚙️ နောက်ထပ်',
         levels: '📚 Academy Levels',
         beginner: '🧑‍🏫 Beginner Course',
         progress: '📊 My Progress',
         mode: '🎛 Tutor Mode',
-        help: '❓ Help',
+        help: '❓ အကူအညီ',
         myid: '🆔 My ID',
         privacy: '🔐 Privacy',
-        classroom: '🏫 Classroom'
+        classroom: '🏫 Classroom',
+        home: '🏠 ပင်မ Menu'
     },
     mode: {
         normal: '🧑‍🏫 Normal Tutor',
@@ -635,32 +650,59 @@ const BUTTONS = {
         tracks: '🎯 Learning Tracks',
         assessment: '📝 Assessment',
         certificate: '🏆 Certificate',
+        errorClinic: '🩺 အမှားပြန်သင်ခန်းစာ',
+        conversation: '🗣️ စကားပြောလှေကား',
         home: '🏠 ပင်မ Menu'
     }
 };
 
 function mainKeyboard() {
     return Markup.keyboard([
+        [BUTTONS.main.learning, BUTTONS.main.today],
+        [BUTTONS.main.practice, BUTTONS.main.progress],
+        [BUTTONS.main.profile, BUTTONS.main.more],
+        [BUTTONS.main.beginner, BUTTONS.main.help]
+    ]).resize().persistent();
+}
+
+function learningKeyboard() {
+    return Markup.keyboard([
         [BUTTONS.main.academy, BUTTONS.main.levels],
-        [BUTTONS.main.beginner, BUTTONS.main.progress],
-        [BUTTONS.main.mode, BUTTONS.main.help],
-        [BUTTONS.main.myid, BUTTONS.main.privacy],
-        [BUTTONS.main.classroom]
+        [BUTTONS.academy.lesson, BUTTONS.academy.next],
+        [BUTTONS.academy.coach, BUTTONS.academy.dailyPlan],
+        [BUTTONS.main.beginner, BUTTONS.main.home]
+    ]).resize().persistent();
+}
+
+function practiceKeyboard() {
+    return Markup.keyboard([
+        [BUTTONS.academy.roleplay, BUTTONS.academy.conversation],
+        [BUTTONS.academy.pronunciation, BUTTONS.academy.wordBank],
+        [BUTTONS.academy.quiz, BUTTONS.academy.errorClinic],
+        [BUTTONS.academy.liveVoice, BUTTONS.academy.assessment],
+        [BUTTONS.main.home]
+    ]).resize().persistent();
+}
+
+function progressKeyboard() {
+    return Markup.keyboard([
+        [BUTTONS.main.progress, BUTTONS.academy.report],
+        [BUTTONS.academy.dailyPlan, BUTTONS.academy.review],
+        [BUTTONS.academy.certificate, BUTTONS.main.home]
+    ]).resize().persistent();
+}
+
+function profileKeyboard() {
+    return Markup.keyboard([
+        [BUTTONS.main.profile, BUTTONS.academy.tracks],
+        [BUTTONS.main.mode, BUTTONS.main.privacy],
+        [BUTTONS.main.classroom, BUTTONS.main.myid],
+        [BUTTONS.main.home]
     ]).resize().persistent();
 }
 
 function academyKeyboard() {
-    return Markup.keyboard([
-        [BUTTONS.academy.lesson, BUTTONS.academy.next],
-        [BUTTONS.academy.progress, BUTTONS.academy.review],
-        [BUTTONS.academy.roleplay, BUTTONS.academy.quiz],
-        [BUTTONS.academy.coach, BUTTONS.academy.dailyPlan],
-        [BUTTONS.academy.wordBank, BUTTONS.academy.pronunciation],
-        [BUTTONS.academy.liveVoice, BUTTONS.academy.report],
-        [BUTTONS.academy.tracks, BUTTONS.academy.assessment],
-        [BUTTONS.academy.certificate],
-        [BUTTONS.academy.home]
-    ]).resize().persistent();
+    return learningKeyboard();
 }
 
 function modeKeyboard() {
@@ -701,6 +743,11 @@ function commandUpdate(ctx, command) {
 function setupButtonRouting(bot) {
     const routes = [
         [BUTTONS.main.academy, '/academy'],
+        [BUTTONS.main.learning, '/learning'],
+        [BUTTONS.main.today, '/teacherlesson'],
+        [BUTTONS.main.practice, '/practice'],
+        [BUTTONS.main.profile, '/profile'],
+        [BUTTONS.main.more, '/more'],
         [BUTTONS.main.levels, '/levels'],
         [BUTTONS.main.beginner, '/course'],
         [BUTTONS.main.progress, '/academyprogress'],
@@ -727,11 +774,49 @@ function setupButtonRouting(bot) {
         [BUTTONS.academy.tracks, '/tracks'],
         [BUTTONS.academy.assessment, '/academyassessment'],
         [BUTTONS.academy.certificate, '/academycertificate'],
+        [BUTTONS.academy.errorClinic, '/errorclinic'],
+        [BUTTONS.academy.conversation, '/conversation'],
         [BUTTONS.academy.home, '/menu']
     ];
     for (const [label, command] of routes) {
         bot.hears(label, (ctx) => bot.handleUpdate(commandUpdate(ctx, command)));
     }
+}
+
+function profileGoalKeyboard() {
+    return Markup.inlineKeyboard([
+        [Markup.button.callback('🗣️ နေ့စဉ် Speaking', 'profile_goal_speaking')],
+        [Markup.button.callback('💼 အလုပ်အတွက် English', 'profile_goal_work')],
+        [Markup.button.callback('✈️ ခရီးသွား English', 'profile_goal_travel')],
+        [Markup.button.callback('🎓 IELTS/TOEFL', 'profile_goal_exam')],
+        [Markup.button.callback('💪 English ပြောရဲမှု', 'profile_goal_confidence')]
+    ]);
+}
+
+function profileMinutesKeyboard() {
+    return Markup.inlineKeyboard([
+        [Markup.button.callback('⏱️ ၁၅ မိနစ်', 'profile_minutes_15'), Markup.button.callback('⏱️ ၃၀ မိနစ်', 'profile_minutes_30')],
+        [Markup.button.callback('⏱️ ၆၀ မိနစ်', 'profile_minutes_60')]
+    ]);
+}
+
+function profilePracticeKeyboard() {
+    return Markup.inlineKeyboard([
+        [Markup.button.callback('🎙️ အသံ', 'profile_practice_voice'), Markup.button.callback('⌨️ စာ', 'profile_practice_text')],
+        [Markup.button.callback('🔄 နှစ်မျိုးလုံး', 'profile_practice_mixed')]
+    ]);
+}
+
+function profileConfidenceKeyboard() {
+    return Markup.inlineKeyboard([
+        [Markup.button.callback('🌱 မပြောရဲသေး', 'profile_confidence_low')],
+        [Markup.button.callback('🙂 အလယ်အလတ်', 'profile_confidence_medium')],
+        [Markup.button.callback('🚀 ပြောရဲတယ်', 'profile_confidence_high')]
+    ]);
+}
+
+function recommendationMessage(recommendation) {
+    return `🧭 ဒီနေ့အတွက် ဆရာ့အကြံပြုချက်\n\nအခုလေ့ကျင့်သင့်တာ: ${recommendation.mode}\nဘာကြောင့်လဲ: ${recommendation.reason}\n\nလုပ်ရမယ့်အလုပ်:\n${recommendation.action}\n\nအားနည်းနိုင်သော skill: ${(recommendation.weakSkills || []).join(', ') || 'အထူးအားနည်းချက် မတွေ့သေးပါ။'}`;
 }
 
 function setupHandlers(bot) {
@@ -740,9 +825,52 @@ function setupHandlers(bot) {
         await ctx.reply(`မင်္ဂလာပါ ${ctx.from.first_name || 'သူငယ်ချင်း'}!\n\nကျွန်တော်က သင့်ရဲ့ AI English Tutor LinguistPro ဖြစ်ပါတယ်။\n\nလက်ရှိ Mode: ${mode}\n\nBeginner မှ Pro အထိ အဆင့်လိုက်လေ့လာရန် /academy ကိုနှိပ်ပါ။ ၁၂ ခန်းပါ အခြေခံသင်တန်းအတွက် /course ကိုနှိပ်ပါ။\nအောက်က မြန်စာခလုတ်များကို အသုံးပြုပါ။ Command အားလုံးကြည့်ရန် /help ကိုနှိပ်ပါ။`, mainKeyboard());
     });
 
-    bot.help((ctx) => ctx.reply('📚 အသုံးပြုနိုင်သော Command များ\n\n/start - Tutor ကိုစတင်ရန်\n/help - ဒီအကူအညီစာမျက်နှာကို ပြရန်\n/academy - Speaking Academy ကို စတင်ရန် သို့မဟုတ် ပြန်ဆက်ရန်\n/levels - Free/Premium အဆင့်များကြည့်ရန်\n/academylesson - လက်ရှိ Academy lesson ပြန်ကြည့်ရန်\n/teacherlesson - ဆရာဦးဆောင်သင်ခန်းစာ စရန်\n/homework - ဒီနေ့အိမ်စာကြည့်ရန်\n/academyquiz - လက်ရှိ lesson အတွက် Quiz မေးခွန်းအသစ်ရရန်\n/coach - English Learning Coach ကို မေးမြန်းရန်\n/dailyplan - ဒီနေ့အတွက် ကိုယ်ပိုင် Study Plan ဆွဲရန်\n/wordbank - Vocabulary ပြန်လေ့ကျင့်ရန်\n/pronunciation - Pronunciation Coach ဖြင့် အသံလေ့ကျင့်ရန်\n/livevoice - Premium voice conversation စရန်\n/endlive - Voice conversation ပြီးဆုံးရန်\n/skillreport - မိမိ English Skill Report ကြည့်ရန်\n/tracks - General, Travel, IELTS, TOEFL, Business, Job Interview track ရွေးရန်\n/nextacademylesson - လက်ရှိ lesson ပြီးပြီး နောက် lesson သွားရန်\n/academyprogress - Level, points, streak, progress ကြည့်ရန်\n/academyreview - ပြီးခဲ့သော lesson ပြန်လေ့ကျင့်ရန်\n/academyassessment - Checkpoint assessment ဖြေရန်\n/academyroleplay - Real-life role-play စရန်\n/academycertificate - Pro completion status ကြည့်ရန်\n/academyreset - Academy progress ပြန်စရန်\n/course - ၁၂ ခန်းပါ အခြေခံသင်တန်းဖွင့်ရန်\n/teacherlesson - Beginner/Academy lesson ကို ဆရာလို အဆင့်လိုက်သင်ရန်\n/mode - Normal, IELTS, Translator Mode ရွေးရန်\n/myid - Telegram ID ကြည့်ရန်\n/privacy - Privacy controls ကြည့်ရန်\n/exportdata - မိမိ learning data export ရယူရန်\n/deletedata - မိမိ learning data ဖျက်ရန်\n/classroom - မိမိ Classroom ကြည့်ရန်\n/classroom_join CODE - ဆရာ့ Classroom ထဲဝင်ရန်\n/teacher - ဆရာအတွက် Teacher Center\n/classroom_create CLASS_NAME - ဆရာက အတန်းဖန်တီးရန်\n/classroom_dashboard CODE - ဆရာက ကျောင်းသားတိုးတက်မှုကြည့်ရန်\n/upgrade USER_ID DAYS - Admin က Premium ကို ကိုယ်တိုင်ဖွင့်ပေးရန်\n\nအောက်က မြန်စာခလုတ်များကို အသုံးပြုပါ။ Academy ထဲမှာ စာသား သို့မဟုတ် အသံပို့ပါ။ ကျွန်တော်က ဆရာလို သင်ပေး၊ ပြင်ပေး၊ Quiz မေးပြီး အကြံပေးပါမယ်။', mainKeyboard()));
+    bot.help((ctx) => ctx.reply('📚 အသုံးပြုနိုင်သော Command များ\n\n/start - Tutor ကိုစတင်ရန်\n/help - ဒီအကူအညီစာမျက်နှာကို ပြရန်\n/learning - အဆင့်လိုက်သင်ယူမှု Menu\n/practice - လေ့ကျင့်ခန်း Menu\n/profile - ကိုယ်ပိုင် Learning Profile\n/recommend - ဒီနေ့ ဆရာ့အကြံပြုချက်\n/errorclinic - အမှားပြန်သင်ခန်းစာ\n/conversation - Conversation Ladder\n/academy - Speaking Academy ကို စတင်ရန် သို့မဟုတ် ပြန်ဆက်ရန်\n/levels - Free/Premium အဆင့်များကြည့်ရန်\n/academylesson - လက်ရှိ Academy lesson ပြန်ကြည့်ရန်\n/teacherlesson - ဆရာဦးဆောင်သင်ခန်းစာ စရန်\n/homework - ဒီနေ့အိမ်စာကြည့်ရန်\n/academyquiz - လက်ရှိ lesson အတွက် Quiz မေးခွန်းအသစ်ရရန်\n/coach - English Learning Coach ကို မေးမြန်းရန်\n/dailyplan - ဒီနေ့အတွက် ကိုယ်ပိုင် Study Plan ဆွဲရန်\n/wordbank - Vocabulary ပြန်လေ့ကျင့်ရန်\n/pronunciation - Pronunciation Coach ဖြင့် အသံလေ့ကျင့်ရန်\n/livevoice - Premium voice conversation စရန်\n/endlive - Voice conversation ပြီးဆုံးရန်\n/skillreport - မိမိ English Skill Report ကြည့်ရန်\n/tracks - General, Travel, IELTS, TOEFL, Business, Job Interview track ရွေးရန်\n/nextacademylesson - လက်ရှိ lesson ပြီးပြီး နောက် lesson သွားရန်\n/academyprogress - Level, points, streak, progress ကြည့်ရန်\n/academyreview - ပြီးခဲ့သော lesson ပြန်လေ့ကျင့်ရန်\n/academyassessment - Checkpoint assessment ဖြေရန်\n/academyroleplay - Real-life role-play စရန်\n/academycertificate - Pro completion status ကြည့်ရန်\n/academyreset - Academy progress ပြန်စရန်\n/course - ၁၂ ခန်းပါ အခြေခံသင်တန်းဖွင့်ရန်\n/teacherlesson - Beginner/Academy lesson ကို ဆရာလို အဆင့်လိုက်သင်ရန်\n/mode - Normal, IELTS, Translator Mode ရွေးရန်\n/myid - Telegram ID ကြည့်ရန်\n/privacy - Privacy controls ကြည့်ရန်\n/exportdata - မိမိ learning data export ရယူရန်\n/deletedata - မိမိ learning data ဖျက်ရန်\n/classroom - မိမိ Classroom ကြည့်ရန်\n/classroom_join CODE - ဆရာ့ Classroom ထဲဝင်ရန်\n/teacher - ဆရာအတွက် Teacher Center\n/classroom_create CLASS_NAME - ဆရာက အတန်းဖန်တီးရန်\n/classroom_dashboard CODE - ဆရာက ကျောင်းသားတိုးတက်မှုကြည့်ရန်\n/upgrade USER_ID DAYS - Admin က Premium ကို ကိုယ်တိုင်ဖွင့်ပေးရန်\n\nအောက်က မြန်စာခလုတ်များကို အသုံးပြုပါ။ Academy ထဲမှာ စာသား သို့မဟုတ် အသံပို့ပါ။ ကျွန်တော်က ဆရာလို သင်ပေး၊ ပြင်ပေး၊ Quiz မေးပြီး အကြံပေးပါမယ်။', mainKeyboard()));
 
     bot.command('menu', (ctx) => ctx.reply('🏠 ပင်မ Menu', mainKeyboard()));
+    bot.command('learning', (ctx) => ctx.reply('📚 အဆင့်လိုက်သင်ယူမယ့်နေရာကို ရွေးပါ။', learningKeyboard()));
+    bot.command('practice', (ctx) => ctx.reply('🧰 လေ့ကျင့်ခန်းအမျိုးအစားကို ရွေးပါ။', practiceKeyboard()));
+    bot.command('progressmenu', (ctx) => ctx.reply('📊 တိုးတက်မှုနဲ့ Review ကို ကြည့်ပါ။', progressKeyboard()));
+    bot.command('more', (ctx) => ctx.reply('⚙️ ကိုယ်ရေးအချက်အလက်၊ Mode နဲ့ အခြားဝန်ဆောင်မှုများကို ရွေးပါ။', profileKeyboard()));
+    bot.command('profile', async (ctx) => {
+        const progress = await getAcademyProgress(ctx.from.id);
+        if (progress.learnerProfile) {
+            return ctx.reply(`🧭 သင့်ကိုယ်ပိုင်သင်ယူမှု Profile\n\n${profileSummary(progress.learnerProfile)}\n\nဒီ Profile အပေါ်မူတည်ပြီး ဆရာက သင်ကြားနည်းကို အလိုအလျောက်ရွေးပေးပါမယ်။`, profileKeyboard());
+        }
+        await saveAcademyProgress(ctx.from.id, { ...progress, session: { type: 'profile_setup', step: 'goal', draft: {} } });
+        return ctx.reply('🧭 သင့်အတွက် ကိုယ်ပိုင်သင်ကြားမှုလမ်းကြောင်း ဆွဲပေးရန် ရည်မှန်းချက်ကို ရွေးပါ။', profileGoalKeyboard());
+    });
+    bot.command('recommend', async (ctx) => {
+        const progress = await getAcademyProgress(ctx.from.id);
+        const recommendation = recommendTeachingMode(progress);
+        const updated = await saveAcademyProgress(ctx.from.id, { ...progress, adaptiveRecommendation: { ...recommendation, createdAt: new Date().toISOString() } });
+        await ctx.reply(recommendationMessage(recommendation), practiceKeyboard());
+        return updated;
+    });
+    bot.command('errorclinic', async (ctx) => {
+        const progress = await getAcademyProgress(ctx.from.id);
+        if (!progress.active) return ctx.reply('🩺 Error Clinic စရန် အရင်ဆုံး /academy ကို စတင်ပါ။', learningKeyboard());
+        const status = await usageOrReply(ctx);
+        if (!status) return;
+        const level = getLevel(progress.levelId);
+        const lesson = getAcademyLesson(progress.levelId, progress.lessonNumber);
+        const raw = await getTutorResponse(buildErrorClinicPrompt(level, lesson, weakSkills(progress), progress.lastAssessment?.priorities || []), 'default');
+        await saveAcademyProgress(ctx.from.id, { ...progress, session: { type: 'error_clinic', attempts: 0 } });
+        await replyLongText(ctx, `🩺 အမှားပြန်သင်ခန်းစာ\n\n${raw}`);
+        return ctx.reply('အခု English အဖြေကို စာဖြင့်ရေးပါ သို့မဟုတ် အသံပို့ပါ။', practiceKeyboard());
+    });
+    bot.command('conversation', async (ctx) => {
+        const progress = await getAcademyProgress(ctx.from.id);
+        if (!progress.active) return ctx.reply('🗣️ Conversation Ladder စရန် အရင်ဆုံး /academy ကို စတင်ပါ။', learningKeyboard());
+        const status = await usageOrReply(ctx);
+        if (!status) return;
+        const level = getLevel(progress.levelId);
+        const lesson = getAcademyLesson(progress.levelId, progress.lessonNumber);
+        const raw = await getTutorResponse(buildConversationLadderPrompt(level, lesson, 1, normalizeLearnerProfile(progress.learnerProfile)), 'default');
+        await saveAcademyProgress(ctx.from.id, { ...progress, session: { type: 'conversation_ladder', step: 1, attempts: 0 } });
+        await replyLongText(ctx, `🗣️ Conversation Ladder — Step 1\n\n${raw}`);
+        return ctx.reply('အခု English ဖြင့် ပြန်ဖြေပါ။', practiceKeyboard());
+    });
 
     setupButtonRouting(bot);
 
@@ -1377,6 +1505,46 @@ function setupHandlers(bot) {
         });
     }
 
+    for (const [callback, goal] of Object.entries({ speaking: 'speaking', work: 'work', travel: 'travel', exam: 'exam', confidence: 'confidence' })) {
+        bot.action(`profile_goal_${callback}`, async (ctx) => {
+            await ctx.answerCbQuery();
+            const progress = await getAcademyProgress(ctx.from.id);
+            const session = progress.session?.type === 'profile_setup' ? progress.session : { type: 'profile_setup', step: 'minutes', draft: {} };
+            await saveAcademyProgress(ctx.from.id, { ...progress, session: { ...session, step: 'minutes', draft: { ...(session.draft || {}), goal } } });
+            return ctx.reply('တစ်နေ့ကို ဘယ်လောက်ကြာ လေ့လာနိုင်ပါသလဲ။', profileMinutesKeyboard());
+        });
+    }
+    for (const [callback, minutes] of Object.entries({ 15: 15, 30: 30, 60: 60 })) {
+        bot.action(`profile_minutes_${callback}`, async (ctx) => {
+            await ctx.answerCbQuery();
+            const progress = await getAcademyProgress(ctx.from.id);
+            const session = progress.session || { type: 'profile_setup', draft: {} };
+            await saveAcademyProgress(ctx.from.id, { ...progress, session: { ...session, step: 'practice', draft: { ...(session.draft || {}), dailyMinutes: minutes } } });
+            return ctx.reply('စာနဲ့လေ့ကျင့်မလား၊ အသံနဲ့လေ့ကျင့်မလား ရွေးပါ။', profilePracticeKeyboard());
+        });
+    }
+    for (const practice of ['voice', 'text', 'mixed']) {
+        bot.action(`profile_practice_${practice}`, async (ctx) => {
+            await ctx.answerCbQuery();
+            const progress = await getAcademyProgress(ctx.from.id);
+            const session = progress.session || { type: 'profile_setup', draft: {} };
+            await saveAcademyProgress(ctx.from.id, { ...progress, session: { ...session, step: 'confidence', draft: { ...(session.draft || {}), preferredPractice: practice } } });
+            return ctx.reply('လက်ရှိ English ပြောတဲ့အခါ ယုံကြည်မှုဘယ်လောက်ရှိပါသလဲ။', profileConfidenceKeyboard());
+        });
+    }
+    for (const confidence of ['low', 'medium', 'high']) {
+        bot.action(`profile_confidence_${confidence}`, async (ctx) => {
+            await ctx.answerCbQuery();
+            const progress = await getAcademyProgress(ctx.from.id);
+            const draft = progress.session?.draft || {};
+            const learnerProfile = normalizeLearnerProfile({ ...draft, confidence, updatedAt: new Date().toISOString() });
+            const updated = await saveAcademyProgress(ctx.from.id, { ...progress, learnerProfile, session: null });
+            const recommendation = recommendTeachingMode(updated);
+            await saveAcademyProgress(ctx.from.id, { ...updated, adaptiveRecommendation: { ...recommendation, createdAt: new Date().toISOString() } });
+            await ctx.reply(`✅ သင့်ကိုယ်ပိုင် Profile ပြီးပါပြီ။\n\n${profileSummary(learnerProfile)}\n\n${recommendationMessage(recommendation)}`, practiceKeyboard());
+        });
+    }
+
     bot.on('text', async (ctx) => {
         const userMessage = String(ctx.message.text || '').trim();
         if (!userMessage || userMessage.startsWith('/')) return;
@@ -1387,6 +1555,26 @@ function setupHandlers(bot) {
             const status = await usageOrReply(ctx);
             if (!status) return;
             await ctx.sendChatAction('typing');
+
+            if (sessionType === 'error_clinic') {
+                const level = getLevel(academy.levelId);
+                const raw = await getTutorResponse(buildErrorClinicPrompt(level, academyLesson, weakSkills(academy), academy.lastAssessment?.priorities || []) + `\nLearner's new answer:\n${userMessage}`, 'default');
+                const updated = await saveAcademyProgress(ctx.from.id, { ...academy, session: { type: 'error_clinic', attempts: Number(academy.session.attempts || 0) + 1 }, practiceAttempts: Number(academy.practiceAttempts || 0) + 1, points: Number(academy.points || 0) + 8 });
+                await replyLongText(ctx, `🩺 Error Clinic Feedback\n\n${raw}`);
+                await sendEnglishVoiceReply(ctx, raw);
+                return updated;
+            }
+
+            if (sessionType === 'conversation_ladder') {
+                const level = getLevel(academy.levelId);
+                const step = Math.min(4, Math.max(1, Number(academy.session.step || 1)));
+                const raw = await getTutorResponse(buildConversationLadderPrompt(level, academyLesson, step, normalizeLearnerProfile(academy.learnerProfile)) + `\nLearner's answer:\n${userMessage}`, 'default');
+                const nextStep = userMessage.length >= 45 && step < 4 ? step + 1 : step;
+                const updated = await saveAcademyProgress(ctx.from.id, { ...academy, session: { type: 'conversation_ladder', step: nextStep, attempts: Number(academy.session.attempts || 0) + 1 }, practiceAttempts: Number(academy.practiceAttempts || 0) + 1, points: Number(academy.points || 0) + 10 });
+                await replyLongText(ctx, `🗣️ Conversation Ladder — Step ${step}\n\n${raw}\n\nနောက်တစ်ဆင့်: Step ${nextStep}`);
+                await sendEnglishVoiceReply(ctx, raw);
+                return updated;
+            }
 
             if (sessionType === 'review') {
                 const reviewLevel = getLevel(academy.session.levelId || academy.levelId);
@@ -1547,6 +1735,26 @@ function setupHandlers(bot) {
             const response = await fetch(fileLink.href);
             if (!response.ok) throw new Error(`Telegram file download failed: ${response.status}`);
             const buffer = Buffer.from(await response.arrayBuffer());
+
+            if (sessionType === 'error_clinic') {
+                const level = getLevel(academy.levelId);
+                const raw = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildErrorClinicPrompt(level, academyLesson, weakSkills(academy), academy.lastAssessment?.priorities || []) + '\nThe learner has submitted a new voice answer. Give Burmese-first feedback and one repeat task.');
+                const updated = await saveAcademyProgress(ctx.from.id, { ...academy, session: { type: 'error_clinic', attempts: Number(academy.session.attempts || 0) + 1 }, practiceAttempts: Number(academy.practiceAttempts || 0) + 1, speakingAttempts: Number(academy.speakingAttempts || 0) + 1, points: Number(academy.points || 0) + 10 });
+                await replyLongText(ctx, `🩺 Voice Error Clinic Feedback\n\n${raw}`);
+                await sendEnglishVoiceReply(ctx, raw);
+                return updated;
+            }
+
+            if (sessionType === 'conversation_ladder') {
+                const level = getLevel(academy.levelId);
+                const step = Math.min(4, Math.max(1, Number(academy.session.step || 1)));
+                const raw = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildConversationLadderPrompt(level, academyLesson, step, normalizeLearnerProfile(academy.learnerProfile)) + '\nThe learner has submitted a voice answer. Give concise Burmese coaching and the next speaking task.');
+                const nextStep = step < 4 ? step + 1 : step;
+                const updated = await saveAcademyProgress(ctx.from.id, { ...academy, session: { type: 'conversation_ladder', step: nextStep, attempts: Number(academy.session.attempts || 0) + 1 }, practiceAttempts: Number(academy.practiceAttempts || 0) + 1, speakingAttempts: Number(academy.speakingAttempts || 0) + 1, points: Number(academy.points || 0) + 10 });
+                await replyLongText(ctx, `🗣️ Voice Conversation Ladder — Step ${step}\n\n${raw}\n\nနောက်တစ်ဆင့်: Step ${nextStep}`);
+                await sendEnglishVoiceReply(ctx, raw);
+                return updated;
+            }
 
             if (sessionType === 'review') {
                 const reviewLevel = getLevel(academy.session.levelId || academy.levelId);
@@ -1729,4 +1937,4 @@ function setupHandlers(bot) {
     });
 }
 
-module.exports = { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, academyKeyboard, modeReplyKeyboard, BUTTONS, normalizeQuiz, quizKeyboard, quizNextKeyboard, normalizeDailyPlan, dailyPlanKeyboard };
+module.exports = { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, learningKeyboard, practiceKeyboard, progressKeyboard, profileKeyboard, academyKeyboard, modeReplyKeyboard, BUTTONS, normalizeQuiz, quizKeyboard, quizNextKeyboard, normalizeDailyPlan, dailyPlanKeyboard };

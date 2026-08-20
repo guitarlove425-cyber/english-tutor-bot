@@ -149,6 +149,9 @@ function defaultCourseProgress() {
         reviewQueue: [],
         lessonHistory: [],
         lessonMastery: {},
+        learnerProfile: null,
+        adaptiveRecommendation: null,
+        navigationSection: 'main',
         startedAt: null,
         updatedAt: null
     };
@@ -220,6 +223,9 @@ function defaultAcademyProgress() {
         homework: [],
         lessonHistory: [],
         lessonMastery: {},
+        learnerProfile: null,
+        adaptiveRecommendation: null,
+        navigationSection: 'main',
         practiceAttempts: 0,
         speakingAttempts: 0,
         assessmentCount: 0,
