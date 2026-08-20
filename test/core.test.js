@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { splitMessage, englishSpeechChunks } = require('../src/bot/handlers');
+const { setupHandlers, splitMessage, englishSpeechChunks } = require('../src/bot/handlers');
 const {
     checkUsageLimit,
     makeUserPremium,
@@ -13,6 +13,7 @@ const {
     resetCourse
 } = require('../src/database/firebase');
 const { BEGINNER_COURSE, getLesson } = require('../src/course/content');
+const { LEVELS, getLesson: getAcademyLesson, getNextLesson, levelIsPremium } = require('../src/academy/curriculum');
 
 test('splitMessage keeps Telegram chunks under the configured limit', () => {
     const chunks = splitMessage('a'.repeat(8000), 3900);
@@ -66,4 +67,46 @@ test('course progress starts, advances, and resets in memory fallback', async ()
     assert.equal(reset.active, false);
     assert.deepEqual(reset.completedLessons, []);
     assert.equal((await getCourseProgress(userId)).currentLesson, 1);
+});
+
+test('academy curriculum covers Starter through Advanced/Pro with Premium gating', () => {
+    assert.equal(LEVELS.length, 6);
+    assert.deepEqual(LEVELS.map((level) => level.cefr), ['A0', 'A1', 'A2', 'B1', 'B2', 'C1+']);
+    assert.equal(LEVELS.reduce((sum, level) => sum + level.lessons.length, 0), 36);
+    assert.equal(getAcademyLesson('starter', 1).title, 'Greetings and names');
+    assert.equal(getNextLesson('starter', 6).levelId, 'elementary');
+    assert.equal(levelIsPremium('starter'), false);
+    assert.equal(levelIsPremium('advanced-pro'), true);
+});
+
+test('academy progress persists placement, points, assessment, and reset in memory fallback', async () => {
+    const userId = `academy-${Date.now()}`;
+    const { startAcademy, getAcademyProgress, saveAcademyProgress, resetAcademy } = require('../src/database/firebase');
+    const started = await startAcademy(userId);
+    assert.equal(started.active, true);
+    const placed = await saveAcademyProgress(userId, { ...started, placementCompleted: true, levelId: 'intermediate', lessonNumber: 2, points: 120, streak: 3 });
+    assert.equal(placed.levelId, 'intermediate');
+    assert.equal((await getAcademyProgress(userId)).points, 120);
+    await resetAcademy(userId);
+    const reset = await getAcademyProgress(userId);
+    assert.equal(reset.active, false);
+    assert.equal(reset.levelId, 'starter');
+});
+
+test('Academy Telegram handlers register all public flows', () => {
+    const registered = { commands: [], actions: [], events: [] };
+    const fakeBot = {
+        start: () => {},
+        help: () => {},
+        command: (name) => registered.commands.push(name),
+        action: (name) => registered.actions.push(name),
+        on: (name) => registered.events.push(name),
+        telegram: { sendMessage: async () => {} }
+    };
+    setupHandlers(fakeBot);
+    for (const command of ['academy', 'levels', 'academylesson', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset']) {
+        assert.ok(registered.commands.includes(command), `missing /${command}`);
+    }
+    assert.ok(registered.events.includes('text'));
+    assert.ok(registered.events.includes('voice'));
 });

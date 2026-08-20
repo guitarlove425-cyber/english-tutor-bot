@@ -11,10 +11,26 @@ const {
     startCourse,
     completeCourseLesson,
     resetCourse,
+    getAcademyProgress,
+    saveAcademyProgress,
+    startAcademy,
+    resetAcademy,
+    isPremiumUser,
     ADMIN_ID
 } = require('../database/firebase');
-const { BEGINNER_COURSE, getLesson } = require('../course/content');
+const { BEGINNER_COURSE, getLesson: getBeginnerLesson } = require('../course/content');
 const { buildLessonIntro, buildTextPracticePrompt, buildVoicePracticePrompt } = require('../course/teacher');
+const { LEVELS, LEVEL_ORDER, getLevel, getLesson: getAcademyLesson, getNextLesson, levelIsPremium } = require('../academy/curriculum');
+const {
+    buildAcademyLessonIntro,
+    buildPlacementPrompt,
+    buildAcademyTextPrompt,
+    buildAcademyVoicePrompt,
+    buildPlacementVoicePrompt,
+    buildRoleplayPrompt,
+    buildRoleplayVoicePrompt,
+    buildAssessmentPrompt
+} = require('../academy/teacher');
 
 const TELEGRAM_TEXT_LIMIT = 3900;
 const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
@@ -68,14 +84,14 @@ async function getCurrentMode(userId) {
 }
 
 async function sendCurrentLesson(ctx, progress) {
-    const lesson = getLesson(progress.currentLesson) || BEGINNER_COURSE[0];
+    const lesson = getBeginnerLesson(progress.currentLesson) || BEGINNER_COURSE[0];
     await replyLongText(ctx, buildLessonIntro(lesson, BEGINNER_COURSE.length));
     await sendEnglishVoiceReply(ctx, lesson.examples.join('. '));
 }
 
 function courseProgressMessage(progress) {
     const completed = Array.isArray(progress.completedLessons) ? progress.completedLessons.length : 0;
-    const currentLesson = getLesson(progress.currentLesson) || BEGINNER_COURSE[BEGINNER_COURSE.length - 1];
+    const currentLesson = getBeginnerLesson(progress.currentLesson) || BEGINNER_COURSE[BEGINNER_COURSE.length - 1];
     const percentage = Math.round((completed / BEGINNER_COURSE.length) * 100);
     return `📊 Beginner Course Progress\n\nCompleted: ${completed}/${BEGINNER_COURSE.length} lessons (${percentage}%)\nCurrent lesson: ${currentLesson.id}. ${currentLesson.title}\nPractice attempts: ${progress.practiceAttempts || 0}\nSpeaking attempts: ${progress.speakingAttempts || 0}\n\nUse /lesson to see the current lesson, /nextlesson when you are ready, or /resetcourse to start again.`;
 }
@@ -86,6 +102,53 @@ async function savePracticeAttempt(userId, progress, isSpeaking) {
         practiceAttempts: Number(progress.practiceAttempts || 0) + 1,
         speakingAttempts: Number(progress.speakingAttempts || 0) + (isSpeaking ? 1 : 0)
     });
+}
+
+function academyLessonKey(levelId, lessonNumber) {
+    return `${levelId}-${lessonNumber}`;
+}
+
+function academyProgressMessage(progress) {
+    const completed = Array.isArray(progress.completedLessons) ? progress.completedLessons.length : 0;
+    const total = LEVELS.reduce((sum, level) => sum + level.lessons.length, 0);
+    const level = getLevel(progress.levelId);
+    const lesson = getAcademyLesson(progress.levelId, progress.lessonNumber);
+    const percent = Math.round((completed / total) * 100);
+    const premiumLabel = level.premium ? 'Premium' : 'Free';
+    return `🏫 English Speaking Academy\n\nLevel: ${level.title} (${level.cefr}) — ${premiumLabel}\nCurrent lesson: ${lesson ? `${lesson.number}. ${lesson.title}` : 'Completed'}\nCompleted: ${completed}/${total} lessons (${percent}%)\nPoints: ${progress.points || 0}\nPractice attempts: ${progress.practiceAttempts || 0}\nSpeaking attempts: ${progress.speakingAttempts || 0}\nStreak: ${progress.streak || 0} day(s)\n\nUse /academylesson to repeat the lesson, /academyreview to review, /academyassessment for a checkpoint, and /academyreset to start again.`;
+}
+
+async function hasAcademyAccess(ctx, levelId) {
+    if (!levelIsPremium(levelId)) return true;
+    if (await isPremiumUser(ctx.from.id)) return true;
+    await ctx.reply('🔒 This level is part of Premium Academy. Ask the admin to activate Premium for your Telegram ID, then try again.');
+    return false;
+}
+
+async function sendAcademyLesson(ctx, progress) {
+    const level = getLevel(progress.levelId);
+    const lesson = getAcademyLesson(progress.levelId, progress.lessonNumber);
+    if (!lesson) {
+        await ctx.reply('🎓 You completed the full English Speaking Academy. Use /academyassessment for a final assessment.');
+        return;
+    }
+    if (!(await hasAcademyAccess(ctx, level.id))) return;
+    await replyLongText(ctx, buildAcademyLessonIntro(lesson, level, level.lessons.length));
+    await sendEnglishVoiceReply(ctx, `${lesson.title}. ${lesson.objective}. ${lesson.grammar}.`);
+}
+
+function parseJsonResponse(text) {
+    const raw = String(text || '').trim().replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+    try {
+        return JSON.parse(raw);
+    } catch (_) {
+        const start = raw.indexOf('{');
+        const end = raw.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            try { return JSON.parse(raw.slice(start, end + 1)); } catch (error) { return null; }
+        }
+        return null;
+    }
 }
 
 function modeKeyboard() {
@@ -99,12 +162,147 @@ function modeKeyboard() {
 function setupHandlers(bot) {
     bot.start(async (ctx) => {
         const mode = await getCurrentMode(ctx.from.id);
-        await ctx.reply(`Hello ${ctx.from.first_name || 'there'}!\n\nI am LinguistPro, your AI English Tutor.\n\nCurrent mode: ${mode}\n\nIf you are a complete beginner, send /course and I will teach you step by step like a personal teacher.\nUse /help for all commands, /mode for tutor modes, or send text/voice to begin.`);
+        await ctx.reply(`Hello ${ctx.from.first_name || 'there'}!\n\nI am LinguistPro, your AI English Tutor.\n\nCurrent mode: ${mode}\n\nFor a complete step-by-step journey from beginner to Pro, send /academy. For the original beginner lessons, send /course.\nUse /levels to view the Academy, /help for all commands, or send text/voice to begin.`);
     });
 
-    bot.help((ctx) => ctx.reply('Commands:\n/start - Start the tutor\n/help - Show help\n/course - Start or resume the beginner speaking course\n/lesson - Show your current lesson\n/nextlesson - Complete the current lesson and move forward\n/progress - Show course progress\n/resetcourse - Start the course again from Lesson 1\n/mode - Choose tutor mode\n/myid - Show your Telegram ID\n/upgrade USER_ID DAYS - Admin only\n\nIn the course, send text or voice practice answers and I will correct you like a personal teacher. Outside the course, you can also send .srt/.vtt/.txt files in Translator mode.'));
+    bot.help((ctx) => ctx.reply('Commands:\n/start - Start the tutor\n/help - Show help\n/academy - Start or resume the full Speaking Academy\n/levels - View Free and Premium levels\n/academylesson - Show the current Academy lesson\n/nextacademylesson - Complete the current Academy lesson\n/academyprogress - View level, points, streak, and progress\n/academyreview - Review a completed lesson\n/academyassessment - Take a checkpoint assessment\n/academyreset - Reset Academy progress\n/course - Open the original 12-lesson beginner course\n/mode - Choose Normal, IELTS, or Translator mode\n/myid - Show your Telegram ID\n/upgrade USER_ID DAYS - Admin only\n\nIn Academy practice, send text or voice and I will teach, correct, and coach you like a personal teacher.'));
 
     bot.command('mode', (ctx) => ctx.reply('Choose a tutor mode:', modeKeyboard()));
+
+    bot.command('levels', async (ctx) => {
+        const lines = LEVELS.map((level) => `${level.premium ? '🔒' : '✅'} ${level.title} (${level.cefr}) — ${level.premium ? 'Premium' : 'Free'}\n${level.goal}`);
+        await replyLongText(ctx, `🏫 English Speaking Academy Levels\n\n${lines.join('\n\n')}\n\nSend /academy to start with a friendly placement interview.`);
+    });
+
+    bot.command('academy', async (ctx) => {
+        try {
+            const progress = await startAcademy(ctx.from.id);
+            if (progress.placementCompleted) return sendAcademyLesson(ctx, progress);
+            await saveAcademyProgress(ctx.from.id, {
+                ...progress,
+                active: true,
+                session: { type: 'placement' }
+            });
+            await ctx.reply('🏫 Welcome to the Premium English Speaking Academy. I will first check your level so I do not teach too fast or too slowly.\n\nPlease answer in English, by text or voice:\n“Hello, my name is ___. I am from ___. I am a ___. I want to improve my English because ___.”\n\nIt is okay to make mistakes. This is only a friendly placement interview.');
+        } catch (error) {
+            console.error('Academy start error:', error.message);
+            await ctx.reply('🙏 I could not start the Academy right now. Please try again.');
+        }
+    });
+
+    bot.command('academylesson', async (ctx) => {
+        try {
+            const progress = await getAcademyProgress(ctx.from.id);
+            if (!progress.active) return ctx.reply('Send /academy to start your Academy journey.');
+            await sendAcademyLesson(ctx, progress);
+        } catch (error) {
+            console.error('Academy lesson error:', error.message);
+            await ctx.reply('🙏 I could not load your Academy lesson right now.');
+        }
+    });
+
+    bot.command('academyprogress', async (ctx) => {
+        try {
+            await ctx.reply(academyProgressMessage(await getAcademyProgress(ctx.from.id)));
+        } catch (error) {
+            console.error('Academy progress error:', error.message);
+            await ctx.reply('🙏 I could not load your Academy progress right now.');
+        }
+    });
+
+    bot.command('academyreview', async (ctx) => {
+        try {
+            const progress = await getAcademyProgress(ctx.from.id);
+            const review = progress.lastCompletedLesson || (progress.completedLessons || []).slice(-1)[0];
+            if (!review) return ctx.reply('Complete your first Academy lesson before starting a review.');
+            const position = typeof review === 'object' ? review : (() => { const parts = String(review).split('-'); return { levelId: parts.slice(0, -1).join('-'), lessonNumber: parts.at(-1) }; })();
+            const lesson = getAcademyLesson(position.levelId, position.lessonNumber);
+            const level = getLevel(position.levelId);
+            await replyLongText(ctx, `🔁 Review: ${level.title} — ${lesson.title}\n\nGoal: ${lesson.objective}\nGrammar: ${lesson.grammar}\nVocabulary: ${lesson.vocabulary}\n\nNow answer again:\n${lesson.speakingTask}`);
+        } catch (error) {
+            console.error('Academy review error:', error.message);
+            await ctx.reply('🙏 I could not load your review right now.');
+        }
+    });
+
+    bot.command('academyassessment', async (ctx) => {
+        try {
+            const progress = await getAcademyProgress(ctx.from.id);
+            const lesson = getAcademyLesson(progress.levelId, progress.lessonNumber) || (progress.lessonNumber === 999 ? getAcademyLesson('advanced-pro', 6) : null);
+            const level = getLevel(progress.levelId);
+            if (!progress.active || !lesson) return ctx.reply('Send /academy to begin, or complete the current course before taking the final assessment.');
+            if (!(await hasAcademyAccess(ctx, level.id))) return;
+            await saveAcademyProgress(ctx.from.id, { ...progress, session: { type: 'assessment', assessmentType: `${level.title} checkpoint` } });
+            await ctx.reply(`📝 ${level.title} checkpoint\n\nSpeak or type for one minute about this topic:\n${lesson.speakingTask}\n\nI will score grammar, vocabulary, fluency, pronunciation, and task completion from 0 to 10.`);
+        } catch (error) {
+            console.error('Academy assessment error:', error.message);
+            await ctx.reply('🙏 I could not start the assessment right now.');
+        }
+    });
+
+    bot.command('academyroleplay', async (ctx) => {
+        try {
+            const progress = await getAcademyProgress(ctx.from.id);
+            const lesson = getAcademyLesson(progress.levelId, progress.lessonNumber);
+            const level = getLevel(progress.levelId);
+            if (!progress.active || !lesson) return ctx.reply('Send /academy to start your Academy first.');
+            if (!(await hasAcademyAccess(ctx, level.id))) return;
+            await saveAcademyProgress(ctx.from.id, { ...progress, session: { type: 'roleplay', scenario: lesson.title } });
+            await ctx.reply(`🎭 Premium Role-play: ${lesson.title}\n\nI will act as the other person. You reply naturally in English by text or voice. I will stay in character and coach you after each turn.\n\nStart now: ${lesson.speakingTask}`);
+        } catch (error) {
+            console.error('Academy role-play error:', error.message);
+            await ctx.reply('🙏 I could not start role-play right now.');
+        }
+    });
+
+    bot.command('academycertificate', async (ctx) => {
+        try {
+            const progress = await getAcademyProgress(ctx.from.id);
+            const completed = (progress.completedLessons || []).includes('advanced-pro-6') || progress.lessonNumber === 999;
+            if (!completed) return ctx.reply('Complete all Academy lessons before requesting the Pro completion certificate.');
+            await ctx.reply(`🏆 English Speaking Academy — Pro Completion\n\nCongratulations, ${ctx.from.first_name || 'Learner'}!\nYou completed the full Starter-to-Advanced/Pro speaking path.\n\nPoints: ${progress.points || 0}\nAssessments: ${progress.assessmentCount || 0}\n\nKeep using /academyroleplay and /academyassessment to maintain your fluency.`);
+        } catch (error) {
+            console.error('Academy certificate error:', error.message);
+            await ctx.reply('🙏 I could not load your certificate status right now.');
+        }
+    });
+
+    bot.command('nextacademylesson', async (ctx) => {
+        try {
+            const progress = await getAcademyProgress(ctx.from.id);
+            const lesson = getAcademyLesson(progress.levelId, progress.lessonNumber);
+            if (!progress.active || !lesson) return ctx.reply('Send /academy to start or resume your Academy.');
+            const next = getNextLesson(progress.levelId, progress.lessonNumber);
+            const completed = [...new Set([...(progress.completedLessons || []), lesson.id])];
+            if (!next) {
+                await saveAcademyProgress(ctx.from.id, { ...progress, completedLessons: completed, lessonNumber: 999, session: null, lastCompletedLesson: { levelId: lesson.levelId, lessonNumber: lesson.number }, points: Number(progress.points || 0) + 100 });
+                return ctx.reply('🏆 Congratulations! You completed the full English Speaking Academy. Send /academyassessment for your final Pro-level assessment.');
+            }
+            const nextLevel = getLevel(next.levelId);
+            if (nextLevel.premium && !(await isPremiumUser(ctx.from.id))) {
+                await saveAcademyProgress(ctx.from.id, { ...progress, completedLessons: completed, lessonNumber: next.lessonNumber, levelId: next.levelId, lastCompletedLesson: { levelId: lesson.levelId, lessonNumber: lesson.number }, points: Number(progress.points || 0) + 100 });
+                return ctx.reply(`✅ ${lesson.title} completed. Your next level is ${nextLevel.title} (${nextLevel.cefr}), which is included in Premium Academy. Ask the admin to activate Premium, then send /academylesson.`);
+            }
+            const today = new Date().toISOString().slice(0, 10);
+            const streak = progress.lastPracticeDate === today ? Number(progress.streak || 0) : Number(progress.streak || 0) + 1;
+            const updated = await saveAcademyProgress(ctx.from.id, { ...progress, completedLessons: completed, levelId: next.levelId, lessonNumber: next.lessonNumber, session: null, lastCompletedLesson: { levelId: lesson.levelId, lessonNumber: lesson.number }, practiceAttempts: Number(progress.practiceAttempts || 0) + 1, points: Number(progress.points || 0) + 100, streak, lastPracticeDate: today });
+            await ctx.reply(`✅ Great work. Lesson ${lesson.number} is complete. Next: ${nextLevel.title} (${nextLevel.cefr}).`);
+            await sendAcademyLesson(ctx, updated);
+        } catch (error) {
+            console.error('Next Academy lesson error:', error.message);
+            await ctx.reply('🙏 I could not move to the next Academy lesson right now.');
+        }
+    });
+
+    bot.command('academyreset', async (ctx) => {
+        try {
+            await resetAcademy(ctx.from.id);
+            await ctx.reply('🔄 Academy progress reset. Send /academy to take the placement interview again.');
+        } catch (error) {
+            console.error('Academy reset error:', error.message);
+            await ctx.reply('🙏 I could not reset your Academy progress right now.');
+        }
+    });
 
     bot.command('course', async (ctx) => {
         try {
@@ -141,7 +339,7 @@ function setupHandlers(bot) {
         try {
             const progress = await getCourseProgress(ctx.from.id);
             if (!progress.active) return ctx.reply('Send /course to start the beginner course first.');
-            const currentLesson = getLesson(progress.currentLesson);
+            const currentLesson = getBeginnerLesson(progress.currentLesson);
             if (!currentLesson) return ctx.reply('🎉 You have completed the beginner course! Use /course to review it again.');
             if ((progress.completedLessons || []).includes(currentLesson.id)) {
                 return ctx.reply('This lesson is already complete. Send /lesson to review it or continue with your practice.');
@@ -209,12 +407,78 @@ function setupHandlers(bot) {
         const userMessage = String(ctx.message.text || '').trim();
         if (!userMessage || userMessage.startsWith('/')) return;
         try {
-            const progress = await getCourseProgress(ctx.from.id);
-            const activeLesson = progress.active ? getLesson(progress.currentLesson) : null;
+            const academy = await getAcademyProgress(ctx.from.id);
+            const sessionType = academy.session?.type;
+            const academyLesson = academy.active ? getAcademyLesson(academy.levelId, academy.lessonNumber) : null;
             const status = await usageOrReply(ctx);
             if (!status) return;
             await ctx.sendChatAction('typing');
 
+            if (sessionType === 'placement') {
+                const raw = await getTutorResponse(buildPlacementPrompt(userMessage), 'default');
+                const placement = parseJsonResponse(raw);
+                if (!placement) return replyLongText(ctx, raw);
+                const recommended = LEVEL_ORDER.includes(placement.levelId) ? placement.levelId : 'starter';
+                const premiumBlocked = levelIsPremium(recommended) && !(await isPremiumUser(ctx.from.id));
+                const chosenLevel = premiumBlocked ? 'elementary' : recommended;
+                const updated = await saveAcademyProgress(ctx.from.id, {
+                    ...academy,
+                    placementCompleted: true,
+                    active: true,
+                    levelId: chosenLevel,
+                    lessonNumber: 1,
+                    session: null,
+                    placement: { ...placement, recommendedLevel: recommended, placedLevel: chosenLevel }
+                });
+                await replyLongText(ctx, `✅ Placement interview complete.\n\nRecommended level: ${getLevel(recommended).title} (${getLevel(recommended).cefr})\nStarting level: ${getLevel(chosenLevel).title} (${getLevel(chosenLevel).cefr})\nConfidence: ${placement.confidence || 0}%\n\nStrengths: ${(placement.strengths || []).join('; ') || 'You completed the interview.'}\nPriorities: ${(placement.priorities || []).join('; ') || 'Build confidence through regular practice.'}${premiumBlocked ? '\n\nYour recommended level is in Premium Academy, so I am starting you with the free level. Upgrade Premium to unlock the recommended path.' : ''}`);
+                await sendAcademyLesson(ctx, updated);
+                return;
+            }
+
+            if (sessionType === 'roleplay' && academyLesson) {
+                if (!(await hasAcademyAccess(ctx, academy.levelId))) return;
+                const level = getLevel(academy.levelId);
+                const replyMessage = await getTutorResponse(buildRoleplayPrompt(academyLesson, level, userMessage), 'default');
+                await replyLongText(ctx, replyMessage);
+                const today = new Date().toISOString().slice(0, 10);
+                await saveAcademyProgress(ctx.from.id, { ...academy, practiceAttempts: Number(academy.practiceAttempts || 0) + 1, points: Number(academy.points || 0) + 12, lastPracticeDate: today });
+                await sendEnglishVoiceReply(ctx, replyMessage);
+                return;
+            }
+
+            if (sessionType === 'assessment') {
+                const level = getLevel(academy.levelId);
+                const assessmentLesson = academyLesson || getAcademyLesson('advanced-pro', 6);
+                const raw = await getTutorResponse(buildAssessmentPrompt(level, academy.session.assessmentType, userMessage), 'default');
+                const assessment = parseJsonResponse(raw);
+                if (!assessment) return replyLongText(ctx, raw);
+                const updated = await saveAcademyProgress(ctx.from.id, {
+                    ...academy,
+                    session: null,
+                    assessmentCount: Number(academy.assessmentCount || 0) + 1,
+                    lastAssessment: assessment,
+                    lastScore: assessment.overall,
+                    points: Number(academy.points || 0) + Number(assessment.overall || 0) * 10,
+                    lastAssessmentLesson: assessmentLesson?.id || null
+                });
+                await replyLongText(ctx, `📝 ${level.title} Assessment Result\n\nOverall: ${assessment.overall || 0}/10\nGrammar: ${assessment.grammar || 0}/10\nVocabulary: ${assessment.vocabulary || 0}/10\nFluency: ${assessment.fluency || 0}/10\nPronunciation/clarity: ${assessment.pronunciation || 0}/10\nTask completion: ${assessment.taskCompletion || 0}/10\n\nStrength: ${assessment.strength || 'Keep practicing.'}\nPriorities: ${(assessment.priorities || []).join('; ') || 'Continue regular speaking practice.'}\nCorrected example: ${assessment.correctedExample || 'Keep building complete sentences.'}\nNext task: ${assessment.nextTask || 'Repeat this answer with more detail.'}\n\nPoints: ${updated.points}`);
+                return;
+            }
+
+            if (academy.active && academyLesson) {
+                if (!(await hasAcademyAccess(ctx, academy.levelId))) return;
+                const level = getLevel(academy.levelId);
+                const replyMessage = await getTutorResponse(buildAcademyTextPrompt(academyLesson, level, userMessage), 'default');
+                await replyLongText(ctx, replyMessage);
+                const today = new Date().toISOString().slice(0, 10);
+                const streak = academy.lastPracticeDate === today ? Number(academy.streak || 0) : Number(academy.streak || 0) + 1;
+                await saveAcademyProgress(ctx.from.id, { ...academy, practiceAttempts: Number(academy.practiceAttempts || 0) + 1, points: Number(academy.points || 0) + 10, streak, lastPracticeDate: today });
+                await sendEnglishVoiceReply(ctx, replyMessage);
+                return;
+            }
+
+            const progress = await getCourseProgress(ctx.from.id);
+            const activeLesson = progress.active ? getBeginnerLesson(progress.currentLesson) : null;
             if (activeLesson) {
                 const replyMessage = await getTutorResponse(buildTextPracticePrompt(activeLesson, userMessage), 'default');
                 await replyLongText(ctx, replyMessage);
@@ -237,23 +501,67 @@ function setupHandlers(bot) {
 
     bot.on('voice', async (ctx) => {
         try {
-            const progress = await getCourseProgress(ctx.from.id);
-            const activeLesson = progress.active ? getLesson(progress.currentLesson) : null;
+            const academy = await getAcademyProgress(ctx.from.id);
+            const sessionType = academy.session?.type;
+            const academyLesson = academy.active ? getAcademyLesson(academy.levelId, academy.lessonNumber) : null;
             const status = await usageOrReply(ctx);
             if (!status) return;
-            const currentMode = activeLesson ? 'default' : await getCurrentMode(ctx.from.id);
             await ctx.sendChatAction('typing');
             const fileId = ctx.message.voice.file_id;
             const fileLink = await ctx.telegram.getFileLink(fileId);
             const response = await fetch(fileLink.href);
             if (!response.ok) throw new Error(`Telegram file download failed: ${response.status}`);
             const buffer = Buffer.from(await response.arrayBuffer());
-            const replyMessage = await getTutorResponseFromAudio(
-                buffer,
-                ctx.message.voice.mime_type || 'audio/ogg',
-                currentMode,
-                activeLesson ? buildVoicePracticePrompt(activeLesson) : ''
-            );
+
+            if (sessionType === 'placement') {
+                const raw = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildPlacementVoicePrompt());
+                const placement = parseJsonResponse(raw) || { levelId: 'starter', confidence: 0, strengths: [], priorities: ['Build confidence with simple speaking practice.'] };
+                const recommended = LEVEL_ORDER.includes(placement.levelId) ? placement.levelId : 'starter';
+                const premiumBlocked = levelIsPremium(recommended) && !(await isPremiumUser(ctx.from.id));
+                const chosenLevel = premiumBlocked ? 'elementary' : recommended;
+                const updated = await saveAcademyProgress(ctx.from.id, { ...academy, placementCompleted: true, session: null, levelId: chosenLevel, lessonNumber: 1, placement: { ...placement, voiceInterview: true, recommendedLevel: recommended, placedLevel: chosenLevel } });
+                await replyLongText(ctx, `✅ Voice placement complete.\nRecommended level: ${getLevel(recommended).title} (${getLevel(recommended).cefr})\nStarting level: ${getLevel(chosenLevel).title} (${getLevel(chosenLevel).cefr})\nConfidence: ${placement.confidence || 0}%${premiumBlocked ? '\n\nYour recommended level is part of Premium Academy. Upgrade to unlock it.' : ''}`);
+                await sendAcademyLesson(ctx, updated);
+                return;
+            }
+
+            if (sessionType === 'roleplay' && academyLesson) {
+                if (!(await hasAcademyAccess(ctx, academy.levelId))) return;
+                const level = getLevel(academy.levelId);
+                const replyMessage = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildRoleplayVoicePrompt(academyLesson, level));
+                await replyLongText(ctx, replyMessage);
+                const today = new Date().toISOString().slice(0, 10);
+                await saveAcademyProgress(ctx.from.id, { ...academy, practiceAttempts: Number(academy.practiceAttempts || 0) + 1, speakingAttempts: Number(academy.speakingAttempts || 0) + 1, points: Number(academy.points || 0) + 15, lastPracticeDate: today });
+                await sendEnglishVoiceReply(ctx, replyMessage);
+                return;
+            }
+
+            if (sessionType === 'assessment') {
+                const level = getLevel(academy.levelId);
+                const scorePrompt = `Listen to this speaking assessment at ${level.title} (${level.cefr}). Return JSON only: {"overall":0,"grammar":0,"vocabulary":0,"fluency":0,"pronunciation":0,"taskCompletion":0,"strength":"...","priorities":["...","..."],"correctedExample":"...","nextTask":"..."}. Score every category from 0 to 10 and give concise feedback.`;
+                const raw = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', scorePrompt);
+                const assessment = parseJsonResponse(raw) || { overall: 0, strength: raw, priorities: ['Repeat the task with clearer sentences.'] };
+                const updated = await saveAcademyProgress(ctx.from.id, { ...academy, session: null, assessmentCount: Number(academy.assessmentCount || 0) + 1, lastAssessment: assessment, lastScore: assessment.overall, points: Number(academy.points || 0) + Number(assessment.overall || 0) * 10 });
+                await replyLongText(ctx, `📝 Speaking assessment result\n\nOverall: ${assessment.overall || 0}/10\nGrammar: ${assessment.grammar || 0}/10\nVocabulary: ${assessment.vocabulary || 0}/10\nFluency: ${assessment.fluency || 0}/10\nPronunciation: ${assessment.pronunciation || 0}/10\n\nStrength: ${assessment.strength || 'Keep practicing.'}\nPriorities: ${(assessment.priorities || []).join('; ')}\nCorrected example: ${assessment.correctedExample || 'Try one more clear sentence.'}\nNext task: ${assessment.nextTask || 'Repeat the answer slowly and clearly.'}\n\nPoints: ${updated.points}`);
+                return;
+            }
+
+            if (academy.active && academyLesson) {
+                if (!(await hasAcademyAccess(ctx, academy.levelId))) return;
+                const level = getLevel(academy.levelId);
+                const replyMessage = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildAcademyVoicePrompt(academyLesson, level));
+                await replyLongText(ctx, replyMessage);
+                const today = new Date().toISOString().slice(0, 10);
+                const streak = academy.lastPracticeDate === today ? Number(academy.streak || 0) : Number(academy.streak || 0) + 1;
+                await saveAcademyProgress(ctx.from.id, { ...academy, practiceAttempts: Number(academy.practiceAttempts || 0) + 1, speakingAttempts: Number(academy.speakingAttempts || 0) + 1, points: Number(academy.points || 0) + 15, streak, lastPracticeDate: today });
+                await sendEnglishVoiceReply(ctx, replyMessage);
+                return;
+            }
+
+            const progress = await getCourseProgress(ctx.from.id);
+            const activeLesson = progress.active ? getBeginnerLesson(progress.currentLesson) : null;
+            const currentMode = activeLesson ? 'default' : await getCurrentMode(ctx.from.id);
+            const replyMessage = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', currentMode, activeLesson ? buildVoicePracticePrompt(activeLesson) : '');
             await replyLongText(ctx, replyMessage);
             if (activeLesson) {
                 await savePracticeAttempt(ctx.from.id, progress, true);

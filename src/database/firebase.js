@@ -199,6 +199,70 @@ async function resetCourse(userId) {
     return saveCourseProgress(userId, { ...defaultCourseProgress(), updatedAt: new Date().toISOString() });
 }
 
+function defaultAcademyProgress() {
+    return {
+        active: false,
+        placementCompleted: false,
+        levelId: 'starter',
+        lessonNumber: 1,
+        completedLessons: [],
+        reviewQueue: [],
+        practiceAttempts: 0,
+        speakingAttempts: 0,
+        assessmentCount: 0,
+        points: 0,
+        streak: 0,
+        lastPracticeDate: null,
+        lastScore: null,
+        placement: null,
+        lastAssessment: null,
+        startedAt: null,
+        updatedAt: null
+    };
+}
+
+async function getAcademyProgress(userId) {
+    const userKey = String(userId);
+    if (firebaseEnabled) {
+        const snapshot = await db.collection('academy_progress').doc(userKey).get();
+        return { ...defaultAcademyProgress(), ...(snapshot.exists ? snapshot.data() : {}) };
+    }
+    return { ...defaultAcademyProgress(), ...(getMemoryUser(userKey).academyProgress || {}) };
+}
+
+async function saveAcademyProgress(userId, progress) {
+    const userKey = String(userId);
+    const data = { ...defaultAcademyProgress(), ...progress, updatedAt: new Date().toISOString() };
+    if (firebaseEnabled) {
+        await db.collection('academy_progress').doc(userKey).set(data, { merge: true });
+    } else {
+        memoryUsers.set(userKey, { ...getMemoryUser(userKey), academyProgress: data });
+    }
+    return data;
+}
+
+async function startAcademy(userId) {
+    const existing = await getAcademyProgress(userId);
+    return saveAcademyProgress(userId, {
+        ...existing,
+        active: true,
+        startedAt: existing.startedAt || new Date().toISOString()
+    });
+}
+
+async function resetAcademy(userId) {
+    return saveAcademyProgress(userId, defaultAcademyProgress());
+}
+
+async function isPremiumUser(userId) {
+    if (Number(userId) === ADMIN_ID) return true;
+    const userKey = String(userId);
+    const userData = firebaseEnabled
+        ? (await db.collection('users').doc(userKey).get()).data() || {}
+        : getMemoryUser(userKey);
+    return Boolean(userData.isPremium && userData.premiumExpiry && new Date(userData.premiumExpiry) > new Date());
+}
+
 module.exports = {
     checkUsageLimit,
     makeUserPremium,
@@ -209,6 +273,11 @@ module.exports = {
     startCourse,
     completeCourseLesson,
     resetCourse,
+    getAcademyProgress,
+    saveAcademyProgress,
+    startAcademy,
+    resetAcademy,
+    isPremiumUser,
     isFirebaseEnabled,
     ADMIN_ID
 };
