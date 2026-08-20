@@ -209,6 +209,57 @@ async function resetCourse(userId) {
     return saveCourseProgress(userId, { ...defaultCourseProgress(), updatedAt: new Date().toISOString() });
 }
 
+function defaultKidsProgress() {
+    return {
+        active: false,
+        ageBand: '6-9',
+        stageId: 'discovery',
+        lessonNumber: 1,
+        completedLessons: [],
+        lessonMastery: {},
+        teacherSession: null,
+        reviewQueue: [],
+        practiceAttempts: 0,
+        speakingAttempts: 0,
+        points: 0,
+        streak: 0,
+        lastPracticeDate: null,
+        lastScore: null,
+        learnerProfile: null,
+        startedAt: null,
+        updatedAt: null
+    };
+}
+
+async function getKidsProgress(userId) {
+    const userKey = String(userId);
+    if (firebaseEnabled) {
+        const snapshot = await db.collection('kids_progress').doc(userKey).get();
+        return { ...defaultKidsProgress(), ...(snapshot.exists ? snapshot.data() : {}) };
+    }
+    return { ...defaultKidsProgress(), ...(getMemoryUser(userKey).kidsProgress || {}) };
+}
+
+async function saveKidsProgress(userId, progress) {
+    const userKey = String(userId);
+    const data = { ...defaultKidsProgress(), ...progress, updatedAt: new Date().toISOString() };
+    if (firebaseEnabled) {
+        await db.collection('kids_progress').doc(userKey).set(data, { merge: true });
+    } else {
+        memoryUsers.set(userKey, { ...getMemoryUser(userKey), kidsProgress: data });
+    }
+    return data;
+}
+
+async function startKids(userId, ageBand = '6-9') {
+    const existing = await getKidsProgress(userId);
+    return saveKidsProgress(userId, { ...existing, active: true, ageBand: String(ageBand || existing.ageBand || '6-9'), startedAt: existing.startedAt || new Date().toISOString() });
+}
+
+async function resetKids(userId) {
+    return saveKidsProgress(userId, { ...defaultKidsProgress(), updatedAt: new Date().toISOString() });
+}
+
 function defaultAcademyProgress() {
     return {
         active: false,
@@ -394,22 +445,25 @@ async function getClassroomDashboard(classroom) {
 async function exportUserData(userId) {
     const userKey = String(userId);
     if (firebaseEnabled) {
-        const [user, courseProgress, academyProgress] = await Promise.all([
+        const [user, courseProgress, academyProgress, kidsProgress] = await Promise.all([
             db.collection('users').doc(userKey).get(),
             db.collection('course_progress').doc(userKey).get(),
-            db.collection('academy_progress').doc(userKey).get()
+            db.collection('academy_progress').doc(userKey).get(),
+            db.collection('kids_progress').doc(userKey).get()
         ]);
         return {
             user: user.exists ? user.data() : {},
             courseProgress: courseProgress.exists ? courseProgress.data() : defaultCourseProgress(),
-            academyProgress: academyProgress.exists ? academyProgress.data() : defaultAcademyProgress()
+            academyProgress: academyProgress.exists ? academyProgress.data() : defaultAcademyProgress(),
+            kidsProgress: kidsProgress.exists ? kidsProgress.data() : defaultKidsProgress()
         };
     }
     const memory = getMemoryUser(userKey);
     return {
         user: memory,
         courseProgress: memory.courseProgress || defaultCourseProgress(),
-        academyProgress: memory.academyProgress || defaultAcademyProgress()
+        academyProgress: memory.academyProgress || defaultAcademyProgress(),
+        kidsProgress: memory.kidsProgress || defaultKidsProgress()
     };
 }
 
@@ -419,7 +473,8 @@ async function deleteUserData(userId) {
         await Promise.all([
             db.collection('users').doc(userKey).delete(),
             db.collection('course_progress').doc(userKey).delete(),
-            db.collection('academy_progress').doc(userKey).delete()
+            db.collection('academy_progress').doc(userKey).delete(),
+            db.collection('kids_progress').doc(userKey).delete()
         ]);
         const owned = await db.collection('classrooms').where('teacherId', '==', userKey).get();
         const joined = await db.collection('classrooms').where('students', 'array-contains', userKey).get();
@@ -451,6 +506,10 @@ module.exports = {
     setUserMode,
     getCourseProgress,
     saveCourseProgress,
+    getKidsProgress,
+    saveKidsProgress,
+    startKids,
+    resetKids,
     startCourse,
     completeCourseLesson,
     resetCourse,

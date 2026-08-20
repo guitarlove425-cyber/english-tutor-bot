@@ -30,6 +30,14 @@ The configured admin account also has a Teacher Center. `/classroom_create CLASS
 
 `/livevoice` opens a Premium multi-turn voice conversation. Each turn keeps the classroom sequence by giving a short context/model, allowing the learner to speak, giving one Burmese coaching note, and asking the next practical question. The learner sends voice messages, the AI replies naturally with one short coaching note and a follow-up question, and the session remains active until `/endlive`. This is a reliable Telegram voice-turn workflow rather than a browser WebRTC call; it works with the existing Gemini audio integration and persists the number of turns and speaking activity.
 
+### Kids English School — Primary to Young Pro
+
+The `/kids` command starts a separate child-friendly pathway with 30 lessons across six stages: Discovery English (Pre-A1, ages 5–7), Primary Foundations (Pre-A1–A1, ages 6–9), Elementary English (A1–A2, ages 8–11), Junior Communicator (A2–B1, ages 10–13), Academic Bridge (B1–B2, ages 12–15), and Young Pro English (B2–C1+, ages 14+). The age-band selector adjusts lesson language and difficulty; it does not request or store a child’s name, address, school, phone number, private photos, or other unnecessary personal information.
+
+The Kids classroom begins with letter names, phonics, short vowels, sound blending, colors, and numbers. It then progresses through family, school, manners, feelings, weather, stories, questions, role-play, opinions, reading main ideas, paragraph writing, mini-presentations, projects, discussion, advanced storytelling, formal writing, presentation Q&A, and a Young Pro capstone. Each lesson stays short, uses simple Burmese instructions, preserves English target content, accepts text or voice practice, and uses the same mastery gate before allowing the next lesson.
+
+Kids navigation is intentionally small: `📘 Kids ဒီနေ့ Lesson`, `📊 Kids တိုးတက်မှု`, `🔁 Kids Review`, and `🏠 ပင်မ Menu`. The Kids teacher uses encouragement rather than shame, asks for only age-band information, avoids unsafe or adult topics, and redirects personal or dangerous questions to a trusted adult. Progress reports use non-competitive language and include a simple at-home practice suggestion for a parent or trusted adult. Use `/kids`, `/kidslesson`, `/kidsprogress`, and `/kidsreview` to access the pathway.
+
 ### Original Beginner Speaking Course
 
 The `/course` command remains available as a lighter 12-lesson path from greetings and introductions through daily routines, questions, shopping, directions, and a final real-life conversation. It is useful for learners who want a short path instead of the full Academy.
@@ -108,6 +116,7 @@ The bot uses the following collections:
 | `user_daily_usage` | Per-user UTC date and request count for the free limit |
 | `course_progress` | Current lesson, completed lessons, teacher session, homework/review state, lesson mastery evidence, practice attempts, and speaking attempts for the original course |
 | `academy_progress` | Placement, CEFR level, current lesson, completed lessons, lesson mastery evidence and progression gates, teacher session, homework/review state, learner profile, adaptive recommendation, navigation state, points, streaks, assessments, role-play, quiz state/statistics, Learning Coach diagnostics, daily-plan completion, Word Bank, pronunciation diagnostics, skill scores, selected track, and live-voice session state |
+| `kids_progress` | Kids age band, six-stage pathway, current lesson, completed lessons, lesson mastery evidence, teacher session, review state, practice/speaking activity, points, streak, and learner profile |
 | `classrooms` | Teacher-owned classroom metadata, join codes, and student Telegram IDs for progress dashboards |
 
 Usage increments use a Firestore transaction, preventing simultaneous requests from bypassing the daily limit.
@@ -129,8 +138,10 @@ src/academy/teacher.js     Placement, lesson, quiz, coach, daily-plan, Word Bank
 src/academy/session.js      Shared explain/model/check/guided/independent/assess/homework/review session framework
 src/academy/learning.js     Spaced repetition, skill reports, mastery evidence, progression gates, and weak-skill helpers
 src/academy/tracks.js      Free and Premium learning-track catalog
+src/kids/content.js         30-lesson Discovery-to-Young-Pro Kids curriculum
+src/kids/teacher.js          Child-safe Burmese-first Kids prompts
 src/classroom/classroom.js Classroom codes and student-summary helpers
 src/ai/gemini.js            Gemini personas and text/audio generation
-src/database/firebase.js   Firestore persistence and in-memory local fallback
+src/database/firebase.js   Firestore persistence, Kids progress, and in-memory local fallback
 check.js                  Gemini model availability checker
 ```
