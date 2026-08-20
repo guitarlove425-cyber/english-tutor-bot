@@ -16,11 +16,29 @@ const {
     startAcademy,
     resetAcademy,
     isPremiumUser,
+    exportUserData,
+    deleteUserData,
     ADMIN_ID
 } = require('../database/firebase');
 const { BEGINNER_COURSE, getLesson: getBeginnerLesson } = require('../course/content');
 const { buildLessonIntro, buildTextPracticePrompt, buildVoicePracticePrompt } = require('../course/teacher');
-const { LEVELS, LEVEL_ORDER, getLevel, getLesson: getAcademyLesson, getNextLesson, levelIsPremium } = require('../academy/curriculum');
+const {
+    LEVELS,
+    LEVEL_ORDER,
+    getLevel,
+    getLesson: getAcademyLesson,
+    getNextLesson,
+    levelIsPremium
+} = require('../academy/curriculum');
+const {
+    todayUtc,
+    seedWordBank,
+    getDueWords,
+    reviewWord,
+    mergeReviewedWord,
+    skillReport
+} = require('../academy/learning');
+const { TRACKS, getTrack, trackIsPremium } = require('../academy/tracks');
 const {
     buildAcademyLessonIntro,
     buildPlacementPrompt,
@@ -33,6 +51,9 @@ const {
     buildQuizFeedbackPrompt,
     buildCoachPrompt,
     buildCoachVoicePrompt,
+    buildPronunciationPrompt,
+    buildWordReviewPrompt,
+    buildSkillReportPrompt,
     buildDailyPlanPrompt,
     buildAssessmentPrompt
 } = require('../academy/teacher');
@@ -120,8 +141,9 @@ function academyProgressMessage(progress) {
     const lesson = getAcademyLesson(progress.levelId, progress.lessonNumber);
     const percent = Math.round((completed / total) * 100);
     const premiumLabel = level.premium ? 'Premium' : 'Free';
+    const track = getTrack(progress.trackId);
     const dailyDone = progress.dailyPlan ? `${(progress.dailyPlanCompleted || []).length}/${progress.dailyPlan.tasks.length}` : 'Not started';
-    return `🏫 English Speaking Academy\n\nLevel: ${level.title} (${level.cefr}) — ${premiumLabel}\nCurrent lesson: ${lesson ? `${lesson.number}. ${lesson.title}` : 'Completed'}\nCompleted: ${completed}/${total} lessons (${percent}%)\nPoints: ${progress.points || 0}\nPractice attempts: ${progress.practiceAttempts || 0}\nSpeaking attempts: ${progress.speakingAttempts || 0}\nQuiz score: ${progress.quizCorrect || 0}/${progress.quizAnswered || 0}\nQuiz streak: ${progress.quizStreak || 0}\nCoach questions: ${progress.coachQuestions || 0}\nDaily plan: ${dailyDone}\nStreak: ${progress.streak || 0} day(s)\n\nUse /academylesson to repeat, /academyquiz for a fresh question, /coach to ask for advice, /dailyplan for today’s plan, /academyreview to review, /academyassessment for a checkpoint, and /academyreset to start again.`;
+    return `🏫 English Speaking Academy\n\nLevel: ${level.title} (${level.cefr}) — ${premiumLabel}\nTrack: ${track.title}\nCurrent lesson: ${lesson ? `${lesson.number}. ${lesson.title}` : 'Completed'}\nCompleted: ${completed}/${total} lessons (${percent}%)\nPoints: ${progress.points || 0}\nPractice attempts: ${progress.practiceAttempts || 0}\nSpeaking attempts: ${progress.speakingAttempts || 0}\nQuiz score: ${progress.quizCorrect || 0}/${progress.quizAnswered || 0}\nQuiz streak: ${progress.quizStreak || 0}\nCoach questions: ${progress.coachQuestions || 0}\nDaily plan: ${dailyDone}\nStreak: ${progress.streak || 0} day(s)\n\nUse /academylesson to repeat, /academyquiz for a fresh question, /coach to ask for advice, /dailyplan for today’s plan, /academyreview to review, /academyassessment for a checkpoint, and /academyreset to start again.`;
 }
 
 async function hasAcademyAccess(ctx, levelId) {
@@ -139,6 +161,10 @@ async function sendAcademyLesson(ctx, progress) {
         return;
     }
     if (!(await hasAcademyAccess(ctx, level.id))) return;
+    const wordBank = seedWordBank(progress.wordBank, lesson.vocabulary, todayUtc());
+    if (wordBank.length !== (progress.wordBank || []).length) {
+        await saveAcademyProgress(ctx.from.id, { ...progress, wordBank });
+    }
     await replyLongText(ctx, buildAcademyLessonIntro(lesson, level, level.lessons.length));
     await sendEnglishVoiceReply(ctx, `${lesson.title}. ${lesson.objective}. ${lesson.grammar}.`);
     await ctx.reply('Use the quick buttons below to continue your Academy lesson.', academyKeyboard());
@@ -179,6 +205,10 @@ function quizNextKeyboard() {
         [Markup.button.callback('🧠 မေးခွန်းအသစ်', 'quiz_new')],
         [Markup.button.callback('🏠 ပင်မ Menu', 'quiz_home')]
     ]);
+}
+
+function wordQuizKeyboard(quiz) {
+    return Markup.inlineKeyboard(quiz.options.map((option, index) => [Markup.button.callback(`${String.fromCharCode(65 + index)}. ${option}`, `word_answer_${index}`)]));
 }
 
 async function sendNewQuiz(ctx) {
@@ -228,6 +258,79 @@ async function answerQuiz(ctx, selectedIndex) {
     await ctx.reply(`${correct ? '✅ Correct!' : `❌ Not quite. Correct answer: ${correctAnswer}`}\n\n${feedback}\n\nQuiz score: ${updated.quizCorrect}/${updated.quizAnswered}\nPoints: ${updated.points}`, quizNextKeyboard());
 }
 
+function wordBankMessage(progress) {
+    const words = Array.isArray(progress.wordBank) ? progress.wordBank : [];
+    const due = getDueWords(words, todayUtc());
+    const mastered = words.filter((entry) => Number(entry.repetitions || 0) >= 3).length;
+    const preview = due.slice(0, 12).map((entry) => `• ${entry.word} — due ${entry.dueDate || 'today'}${entry.repetitions ? ` (${entry.repetitions} reviews)` : ''}`).join('\n') || 'No words are due today. Keep learning and come back tomorrow.';
+    return `📖 My Word Bank\n\nTotal words: ${words.length}\nDue today: ${due.length}\nMastered: ${mastered}\n\n${preview}\n\nWords are scheduled with spaced repetition so difficult words return more often.`;
+}
+
+function wordBankKeyboard(progress) {
+    const due = getDueWords(progress.wordBank, todayUtc()).length;
+    return Markup.inlineKeyboard([
+        ...(due ? [[Markup.button.callback(`🔁 Review ${Math.min(due, 8)} words`, 'word_review')]] : []),
+        [Markup.button.callback('🌱 Add current lesson words', 'word_seed')],
+        [Markup.button.callback('🏠 Main menu', 'word_home')]
+    ]);
+}
+
+async function showWordBank(ctx) {
+    const progress = await getAcademyProgress(ctx.from.id);
+    if (!progress.active) return ctx.reply('Send /academy first so I can build your personalized Word Bank.');
+    const lesson = getAcademyLesson(progress.levelId, progress.lessonNumber);
+    const wordBank = seedWordBank(progress.wordBank, lesson?.vocabulary, todayUtc());
+    const updated = wordBank.length !== (progress.wordBank || []).length
+        ? await saveAcademyProgress(ctx.from.id, { ...progress, wordBank })
+        : progress;
+    await ctx.reply(wordBankMessage(updated), wordBankKeyboard(updated));
+}
+
+async function seedCurrentLessonWords(ctx) {
+    const progress = await getAcademyProgress(ctx.from.id);
+    if (!progress.active) return ctx.reply('Send /academy first so I can build your personalized Word Bank.');
+    const lesson = getAcademyLesson(progress.levelId, progress.lessonNumber);
+    const wordBank = seedWordBank(progress.wordBank, lesson?.vocabulary, todayUtc());
+    const updated = await saveAcademyProgress(ctx.from.id, { ...progress, wordBank });
+    await ctx.reply(`🌱 Added current lesson vocabulary. Your Word Bank now has ${updated.wordBank.length} words.`, wordBankKeyboard(updated));
+}
+
+async function startWordReview(ctx) {
+    const progress = await getAcademyProgress(ctx.from.id);
+    const due = getDueWords(progress.wordBank, todayUtc()).slice(0, 8);
+    if (!due.length) return ctx.reply('✅ No vocabulary is due today. Learn the current lesson or come back tomorrow.');
+    const status = await usageOrReply(ctx);
+    if (!status) return;
+    const level = getLevel(progress.levelId);
+    const raw = await getTutorResponse(buildWordReviewPrompt(level, due.map((entry) => entry.word)), 'default');
+    const quiz = normalizeQuiz(parseJsonResponse(raw));
+    if (!quiz) return replyLongText(ctx, raw);
+    await saveAcademyProgress(ctx.from.id, { ...progress, session: { type: 'word_review', question: quiz, wordId: due[0].id } });
+    await ctx.reply(`🔁 Vocabulary Review\n\n${quiz.question}`, wordQuizKeyboard(quiz));
+}
+
+async function answerWordReview(ctx, selectedIndex) {
+    const progress = await getAcademyProgress(ctx.from.id);
+    const session = progress.session?.type === 'word_review' ? progress.session : null;
+    if (!session) return ctx.reply('Start a review from /wordbank first.');
+    const quiz = session.question;
+    const index = Number(selectedIndex);
+    const correct = index === Number(quiz.answerIndex);
+    const word = (progress.wordBank || []).find((entry) => entry.id === session.wordId);
+    const updatedWord = word ? reviewWord(word, correct, todayUtc()) : null;
+    const updated = await saveAcademyProgress(ctx.from.id, {
+        ...progress,
+        session: null,
+        wordBank: updatedWord ? mergeReviewedWord(progress.wordBank, updatedWord) : progress.wordBank,
+        vocabularyReviewCount: Number(progress.vocabularyReviewCount || 0) + 1,
+        lastVocabularyReview: todayUtc(),
+        vocabularyScore: updatedWord ? Math.round((Number(updatedWord.correct || 0) / Math.max(1, Number(updatedWord.correct || 0) + Number(updatedWord.incorrect || 0))) * 100) : progress.vocabularyScore,
+        points: Number(progress.points || 0) + (correct ? 15 : 5)
+    });
+    const answer = quiz.options[quiz.answerIndex];
+    await ctx.reply(`${correct ? '✅ Correct!' : `❌ Correct answer: ${answer}`}\n\n${quiz.explanation || 'Review the word and use it in your own sentence.'}\n\nVocabulary points: ${updated.points}`, wordBankKeyboard(updated));
+}
+
 function normalizeDailyPlan(data, date) {
     if (!data || !Array.isArray(data.tasks) || data.tasks.length < 4 || data.tasks.length > 5) return null;
     const allowedTypes = new Set(['speaking', 'listening', 'vocabulary', 'grammar', 'review']);
@@ -272,6 +375,7 @@ async function generateDailyPlan(ctx, force = false) {
     const status = await usageOrReply(ctx);
     if (!status) return;
     const stats = {
+        track: getTrack(progress.trackId).title,
         quizAnswered: progress.quizAnswered || 0,
         quizCorrect: progress.quizCorrect || 0,
         quizStreak: progress.quizStreak || 0,
@@ -309,7 +413,8 @@ const BUTTONS = {
         progress: '📊 My Progress',
         mode: '🎛 Tutor Mode',
         help: '❓ Help',
-        myid: '🆔 My ID'
+        myid: '🆔 My ID',
+        privacy: '🔐 Privacy'
     },
     mode: {
         normal: '🧑‍🏫 Normal Tutor',
@@ -325,6 +430,10 @@ const BUTTONS = {
         quiz: '🧠 Lesson Quiz',
         coach: '💬 Learning Coach',
         dailyPlan: '📅 Daily Study Plan',
+        wordBank: '📖 My Word Bank',
+        pronunciation: '🗣️ Pronunciation Coach',
+        report: '📈 Skill Report',
+        tracks: '🎯 Learning Tracks',
         assessment: '📝 Assessment',
         certificate: '🏆 Certificate',
         home: '🏠 ပင်မ Menu'
@@ -336,7 +445,7 @@ function mainKeyboard() {
         [BUTTONS.main.academy, BUTTONS.main.levels],
         [BUTTONS.main.beginner, BUTTONS.main.progress],
         [BUTTONS.main.mode, BUTTONS.main.help],
-        [BUTTONS.main.myid]
+        [BUTTONS.main.myid, BUTTONS.main.privacy]
     ]).resize().persistent();
 }
 
@@ -346,6 +455,8 @@ function academyKeyboard() {
         [BUTTONS.academy.progress, BUTTONS.academy.review],
         [BUTTONS.academy.roleplay, BUTTONS.academy.quiz],
         [BUTTONS.academy.coach, BUTTONS.academy.dailyPlan],
+        [BUTTONS.academy.wordBank, BUTTONS.academy.pronunciation],
+        [BUTTONS.academy.report, BUTTONS.academy.tracks],
         [BUTTONS.academy.assessment, BUTTONS.academy.certificate],
         [BUTTONS.academy.home]
     ]).resize().persistent();
@@ -357,6 +468,15 @@ function modeKeyboard() {
         [Markup.button.callback('IELTS Examiner', 'set_ielts')],
         [Markup.button.callback('Subtitle Translator', 'set_translator')]
     ]);
+}
+
+function tracksKeyboard() {
+    return Markup.inlineKeyboard(TRACKS.map((track) => [Markup.button.callback(`${track.icon} ${track.title}${track.premium ? ' 🔒' : ''}`, `track_${track.id}`)]));
+}
+
+function tracksMessage(currentTrackId = 'general') {
+    const lines = TRACKS.map((track) => `${track.icon} ${track.title} — ${track.premium ? 'Premium' : 'Free'}\n${track.description}${track.id === currentTrackId ? ' ✅ Current' : ''}`);
+    return `🎯 Learning Tracks\n\nChoose a path for your examples, role-plays, study plans, and Coach advice.\n\n${lines.join('\n\n')}`;
 }
 
 function modeReplyKeyboard() {
@@ -386,6 +506,7 @@ function setupButtonRouting(bot) {
         [BUTTONS.main.mode, '/mode'],
         [BUTTONS.main.help, '/help'],
         [BUTTONS.main.myid, '/myid'],
+        [BUTTONS.main.privacy, '/privacy'],
         [BUTTONS.mode.normal, '/mode_normal'],
         [BUTTONS.mode.ielts, '/mode_ielts'],
         [BUTTONS.mode.translator, '/mode_translator'],
@@ -397,6 +518,10 @@ function setupButtonRouting(bot) {
         [BUTTONS.academy.quiz, '/academyquiz'],
         [BUTTONS.academy.coach, '/coach'],
         [BUTTONS.academy.dailyPlan, '/dailyplan'],
+        [BUTTONS.academy.wordBank, '/wordbank'],
+        [BUTTONS.academy.pronunciation, '/pronunciation'],
+        [BUTTONS.academy.report, '/skillreport'],
+        [BUTTONS.academy.tracks, '/tracks'],
         [BUTTONS.academy.assessment, '/academyassessment'],
         [BUTTONS.academy.certificate, '/academycertificate'],
         [BUTTONS.academy.home, '/menu']
@@ -412,7 +537,7 @@ function setupHandlers(bot) {
         await ctx.reply(`Hello ${ctx.from.first_name || 'there'}!\n\nI am LinguistPro, your AI English Tutor.\n\nCurrent mode: ${mode}\n\nFor a complete step-by-step journey from beginner to Pro, send /academy. For the original beginner lessons, send /course.\nUse the quick buttons below or /help for all commands.`, mainKeyboard());
     });
 
-    bot.help((ctx) => ctx.reply('Commands:\n/start - Start the tutor\n/help - Show help\n/academy - Start or resume the full Speaking Academy\n/levels - View Free and Premium levels\n/academylesson - Show the current Academy lesson\n/academyquiz - Get a fresh lesson quiz question\n/coach - Ask the English Learning Coach anything\n/dailyplan - Generate today’s level-based study plan\n/nextacademylesson - Complete the current Academy lesson\n/academyprogress - View level, points, streak, and progress\n/academyreview - Review a completed lesson\n/academyassessment - Take a checkpoint assessment\n/academyroleplay - Start a realistic role-play\n/academycertificate - View Pro completion status\n/academyreset - Reset Academy progress\n/course - Open the original 12-lesson beginner course\n/mode - Choose Normal, IELTS, or Translator mode\n/myid - Show your Telegram ID\n/upgrade USER_ID DAYS - Admin only\n\nUse the quick buttons below. In Academy practice, send text or voice and I will teach, correct, quiz, and coach you like a personal teacher.', mainKeyboard()));
+    bot.help((ctx) => ctx.reply('Commands:\n/start - Start the tutor\n/help - Show help\n/academy - Start or resume the full Speaking Academy\n/levels - View Free and Premium levels\n/academylesson - Show the current Academy lesson\n/academyquiz - Get a fresh lesson quiz question\n/coach - Ask the English Learning Coach anything\n/dailyplan - Generate today’s level-based study plan\n/wordbank - Review vocabulary with spaced repetition\n/pronunciation - Practice with the Pronunciation Coach\n/skillreport - View your English skill report\n/tracks - Choose General, Travel, IELTS, TOEFL, Business, or Job Interview\n/nextacademylesson - Complete the current Academy lesson\n/academyprogress - View level, points, streak, and progress\n/academyreview - Review a completed lesson\n/academyassessment - Take a checkpoint assessment\n/academyroleplay - Start a realistic role-play\n/academycertificate - View Pro completion status\n/academyreset - Reset Academy progress\n/course - Open the original 12-lesson beginner course\n/mode - Choose Normal, IELTS, or Translator mode\n/myid - Show your Telegram ID\n/privacy - View privacy controls\n/exportdata - Export your learning data\n/deletedata - Permanently delete your learning data\n/upgrade USER_ID DAYS - Admin only\n\nUse the quick buttons below. In Academy practice, send text or voice and I will teach, correct, quiz, and coach you like a personal teacher.', mainKeyboard()));
 
     bot.command('menu', (ctx) => ctx.reply('🏠 Main menu', mainKeyboard()));
 
@@ -493,6 +618,69 @@ function setupHandlers(bot) {
         } catch (error) {
             console.error('Daily plan error:', error.message);
             await ctx.reply(error.message === 'API_ERROR' ? '🙏 I could not build your plan because the AI service is temporarily unavailable.' : '🙏 I could not build your daily plan right now.');
+        }
+    });
+
+    bot.command('wordbank', async (ctx) => {
+        try {
+            await showWordBank(ctx);
+        } catch (error) {
+            console.error('Word Bank error:', error.message);
+            await ctx.reply('🙏 I could not load your Word Bank right now.');
+        }
+    });
+
+    bot.command('pronunciation', async (ctx) => {
+        try {
+            const progress = await getAcademyProgress(ctx.from.id);
+            if (!progress.active) return ctx.reply('Send /academy first so I can coach your pronunciation at the right level.');
+            if (!(await hasAcademyAccess(ctx, progress.levelId))) return;
+            await saveAcademyProgress(ctx.from.id, { ...progress, session: { type: 'pronunciation' } });
+            await ctx.reply('🗣️ Pronunciation Coach is ready. Send a voice message in English. I will score clarity, identify useful sound issues, and give you a repeat task.', academyKeyboard());
+        } catch (error) {
+            console.error('Pronunciation start error:', error.message);
+            await ctx.reply('🙏 I could not open Pronunciation Coach right now.');
+        }
+    });
+
+    bot.command('skillreport', async (ctx) => {
+        try {
+            const progress = await getAcademyProgress(ctx.from.id);
+            if (!progress.active) return ctx.reply('Send /academy first so I can build your skill report.');
+            const status = await usageOrReply(ctx);
+            if (!status) return;
+            const report = skillReport(progress);
+            const raw = await getTutorResponse(buildSkillReportPrompt(getLevel(progress.levelId), report), 'default');
+            await replyLongText(ctx, `📈 Skill Report\n\nGrammar: ${report.grammar}/100\nVocabulary: ${report.vocabulary}/100\nSpeaking: ${report.speaking}/100\nFluency: ${report.fluency}/100\nPronunciation: ${report.pronunciation}/100\nConsistency: ${report.consistency}/100\n\n${raw}`);
+        } catch (error) {
+            console.error('Skill report error:', error.message);
+            await ctx.reply('🙏 I could not build your skill report right now.');
+        }
+    });
+
+    bot.command('tracks', async (ctx) => {
+        const progress = await getAcademyProgress(ctx.from.id);
+        if (!progress.active) return ctx.reply('Send /academy first so I can personalize your learning track.');
+        await ctx.reply(tracksMessage(progress.trackId), tracksKeyboard());
+    });
+
+    bot.action(/^track_(.+)$/, async (ctx) => {
+        try {
+            await ctx.answerCbQuery();
+            const trackId = String(ctx.match[1]);
+            const track = getTrack(trackId);
+            if (!track || track.id !== trackId) return ctx.reply('That learning track is not available.');
+            if (trackIsPremium(track.id) && !(await isPremiumUser(ctx.from.id))) {
+                return ctx.reply(`🔒 ${track.title} is part of Premium Academy. Ask the admin to activate Premium, then choose this track again.`);
+            }
+            const progress = await getAcademyProgress(ctx.from.id);
+            const history = [...(progress.trackHistory || []), { trackId: track.id, date: todayUtc() }].slice(-20);
+            const updated = await saveAcademyProgress(ctx.from.id, { ...progress, trackId: track.id, trackHistory: history });
+            await ctx.reply(`✅ Learning track updated: ${track.icon} ${track.title}\n\n${track.description}\n\nYour Coach, Daily Study Plan, quizzes, and role-plays will now use this track.`, academyKeyboard());
+            return updated;
+        } catch (error) {
+            console.error('Track selection error:', error.message);
+            await ctx.reply('🙏 I could not save that learning track right now.');
         }
     });
 
@@ -639,6 +827,41 @@ function setupHandlers(bot) {
         await ctx.reply('🏠 Main menu', mainKeyboard());
     });
 
+    bot.action(/^word_answer_(\d+)$/, async (ctx) => {
+        try {
+            await ctx.answerCbQuery();
+            await answerWordReview(ctx, Number(ctx.match[1]));
+        } catch (error) {
+            console.error('Word review answer error:', error.message);
+            await ctx.reply('🙏 I could not check that vocabulary answer right now.');
+        }
+    });
+
+    bot.action('word_review', async (ctx) => {
+        try {
+            await ctx.answerCbQuery();
+            await startWordReview(ctx);
+        } catch (error) {
+            console.error('Word review start error:', error.message);
+            await ctx.reply('🙏 I could not start vocabulary review right now.');
+        }
+    });
+
+    bot.action('word_seed', async (ctx) => {
+        try {
+            await ctx.answerCbQuery();
+            await seedCurrentLessonWords(ctx);
+        } catch (error) {
+            console.error('Word seed error:', error.message);
+            await ctx.reply('🙏 I could not add the current lesson words right now.');
+        }
+    });
+
+    bot.action('word_home', async (ctx) => {
+        await ctx.answerCbQuery();
+        await ctx.reply('🏠 Main menu', mainKeyboard());
+    });
+
     bot.command('academyreset', async (ctx) => {
         try {
             await resetAcademy(ctx.from.id);
@@ -713,6 +936,39 @@ function setupHandlers(bot) {
 
     bot.command('myid', (ctx) => ctx.reply(`Your Telegram ID is: ${ctx.from.id}`));
 
+    bot.command('privacy', (ctx) => ctx.reply('🔐 Privacy controls\n\nYour learning progress, vocabulary, quizzes, voice diagnostics, and Premium status are stored only to provide the service. Use /exportdata to view your stored learning data, or /deletedata to permanently delete your learning data and Premium record.', mainKeyboard()));
+
+    bot.command('exportdata', async (ctx) => {
+        try {
+            const data = await exportUserData(ctx.from.id);
+            await replyLongText(ctx, `📦 Your learning data export\n\n${JSON.stringify(data, null, 2)}`);
+        } catch (error) {
+            console.error('Data export error:', error.message);
+            await ctx.reply('🙏 I could not export your data right now.');
+        }
+    });
+
+    bot.command('deletedata', (ctx) => ctx.reply('⚠️ This permanently deletes your profile mode, Premium record, course progress, Academy progress, Word Bank, quizzes, pronunciation data, and daily plans. This cannot be undone.', Markup.inlineKeyboard([
+        [Markup.button.callback('🗑️ Confirm delete everything', 'confirm_delete_data')],
+        [Markup.button.callback('Cancel', 'cancel_delete_data')]
+    ])));
+
+    bot.action('confirm_delete_data', async (ctx) => {
+        await ctx.answerCbQuery();
+        try {
+            await deleteUserData(ctx.from.id);
+            await ctx.reply('✅ Your learning data has been deleted.', mainKeyboard());
+        } catch (error) {
+            console.error('Data deletion error:', error.message);
+            await ctx.reply('🙏 I could not delete your data right now. Please try again.');
+        }
+    });
+
+    bot.action('cancel_delete_data', async (ctx) => {
+        await ctx.answerCbQuery();
+        await ctx.reply('Deletion cancelled.', mainKeyboard());
+    });
+
     bot.command('upgrade', async (ctx) => {
         if (ctx.from.id !== ADMIN_ID) return ctx.reply('❌ This command is available to the admin only.');
         const parts = String(ctx.message.text || '').trim().split(/\s+/);
@@ -780,9 +1036,13 @@ function setupHandlers(bot) {
                 return;
             }
 
+            if (sessionType === 'pronunciation') {
+                return ctx.reply('🗣️ Please send a voice message so I can analyze your pronunciation.');
+            }
+
             if (sessionType === 'coach') {
                 const level = getLevel(academy.levelId);
-                const replyMessage = await getTutorResponse(buildCoachPrompt(level, userMessage), 'default');
+                const replyMessage = await getTutorResponse(buildCoachPrompt(level, userMessage, getTrack(academy.trackId)), 'default');
                 await replyLongText(ctx, replyMessage);
                 await saveAcademyProgress(ctx.from.id, { ...academy, session: { type: 'coach' }, coachQuestions: Number(academy.coachQuestions || 0) + 1 });
                 await sendEnglishVoiceReply(ctx, replyMessage);
@@ -812,6 +1072,11 @@ function setupHandlers(bot) {
                     assessmentCount: Number(academy.assessmentCount || 0) + 1,
                     lastAssessment: assessment,
                     lastScore: assessment.overall,
+                    grammarScore: assessment.grammar != null ? Number(assessment.grammar) * 10 : academy.grammarScore,
+                    vocabularyScore: assessment.vocabulary != null ? Number(assessment.vocabulary) * 10 : academy.vocabularyScore,
+                    fluencyScore: assessment.fluency != null ? Number(assessment.fluency) * 10 : academy.fluencyScore,
+                    pronunciationScore: assessment.pronunciation != null ? Number(assessment.pronunciation) * 10 : academy.pronunciationScore,
+                    speakingScore: assessment.overall != null ? Number(assessment.overall) * 10 : academy.speakingScore,
                     points: Number(academy.points || 0) + Number(assessment.overall || 0) * 10,
                     lastAssessmentLesson: assessmentLesson?.id || null
                 });
@@ -879,6 +1144,25 @@ function setupHandlers(bot) {
                 return;
             }
 
+            if (sessionType === 'pronunciation') {
+                const level = getLevel(academy.levelId);
+                const raw = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildPronunciationPrompt(level, academyLesson));
+                const pronunciation = parseJsonResponse(raw) || { score: 0, clarity: 0, sounds: [], stressTip: 'Speak slowly and repeat the sentence.', correctedSentence: '', repeatTask: raw };
+                const score = Math.max(0, Math.min(10, Number(pronunciation.score || 0)));
+                const updated = await saveAcademyProgress(ctx.from.id, {
+                    ...academy,
+                    session: null,
+                    pronunciationAttempts: Number(academy.pronunciationAttempts || 0) + 1,
+                    lastPronunciation: pronunciation,
+                    pronunciationScore: Math.round(score * 10),
+                    speakingScore: Math.max(Number(academy.speakingScore || 0), Math.round(score * 10)),
+                    points: Number(academy.points || 0) + Math.round(score * 3)
+                });
+                await replyLongText(ctx, `🗣️ Pronunciation Report\n\nScore: ${score}/10\nClarity: ${pronunciation.clarity || 0}/10\n\n${(pronunciation.sounds || []).map((item) => `${item.word || 'Sound'}: ${item.issue || 'Keep practicing'} — ${item.tip || ''}`).join('\n') || 'No single sound issue was detected.'}\n\nStress tip: ${pronunciation.stressTip || 'Keep the important words clear.'}\nRepeat task: ${pronunciation.repeatTask || 'Repeat the sentence three times slowly.'}\n\nSpeaking points: ${updated.points}`);
+                await sendEnglishVoiceReply(ctx, pronunciation.correctedSentence || pronunciation.repeatTask || 'Repeat the sentence slowly and clearly.');
+                return;
+            }
+
             if (sessionType === 'coach') {
                 const level = getLevel(academy.levelId);
                 const replyMessage = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildCoachVoicePrompt(level));
@@ -904,7 +1188,7 @@ function setupHandlers(bot) {
                 const scorePrompt = `Listen to this speaking assessment at ${level.title} (${level.cefr}). Return JSON only: {"overall":0,"grammar":0,"vocabulary":0,"fluency":0,"pronunciation":0,"taskCompletion":0,"strength":"...","priorities":["...","..."],"correctedExample":"...","nextTask":"..."}. Score every category from 0 to 10 and give concise feedback.`;
                 const raw = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', scorePrompt);
                 const assessment = parseJsonResponse(raw) || { overall: 0, strength: raw, priorities: ['Repeat the task with clearer sentences.'] };
-                const updated = await saveAcademyProgress(ctx.from.id, { ...academy, session: null, assessmentCount: Number(academy.assessmentCount || 0) + 1, lastAssessment: assessment, lastScore: assessment.overall, points: Number(academy.points || 0) + Number(assessment.overall || 0) * 10 });
+                const updated = await saveAcademyProgress(ctx.from.id, { ...academy, session: null, assessmentCount: Number(academy.assessmentCount || 0) + 1, lastAssessment: assessment, lastScore: assessment.overall, grammarScore: assessment.grammar != null ? Number(assessment.grammar) * 10 : academy.grammarScore, vocabularyScore: assessment.vocabulary != null ? Number(assessment.vocabulary) * 10 : academy.vocabularyScore, fluencyScore: assessment.fluency != null ? Number(assessment.fluency) * 10 : academy.fluencyScore, pronunciationScore: assessment.pronunciation != null ? Number(assessment.pronunciation) * 10 : academy.pronunciationScore, speakingScore: assessment.overall != null ? Number(assessment.overall) * 10 : academy.speakingScore, points: Number(academy.points || 0) + Number(assessment.overall || 0) * 10 });
                 await replyLongText(ctx, `📝 Speaking assessment result\n\nOverall: ${assessment.overall || 0}/10\nGrammar: ${assessment.grammar || 0}/10\nVocabulary: ${assessment.vocabulary || 0}/10\nFluency: ${assessment.fluency || 0}/10\nPronunciation: ${assessment.pronunciation || 0}/10\n\nStrength: ${assessment.strength || 'Keep practicing.'}\nPriorities: ${(assessment.priorities || []).join('; ')}\nCorrected example: ${assessment.correctedExample || 'Try one more clear sentence.'}\nNext task: ${assessment.nextTask || 'Repeat the answer slowly and clearly.'}\n\nPoints: ${updated.points}`);
                 return;
             }

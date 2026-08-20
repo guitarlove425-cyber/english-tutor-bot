@@ -113,8 +113,8 @@ Correct answer: ${correctAnswer}
 Give one short encouraging sentence, say whether it is correct, and explain the grammar or vocabulary in Burmese in no more than three sentences. Then give one tiny example for the learner to repeat.`;
 }
 
-function buildCoachPrompt(level, userMessage) {
-    return `You are an always-available English Learning Coach for a Myanmar learner at ${level.title} (${level.cefr}).
+function buildCoachPrompt(level, userMessage, track = { title: 'General English', description: 'Everyday English' }) {
+    return `You are an always-available English Learning Coach for a Myanmar learner at ${level.title} (${level.cefr}). Their selected learning track is ${track.title}: ${track.description}.
 The learner asks:
 ${userMessage}
 
@@ -123,6 +123,21 @@ Answer like a kind, practical private teacher. First answer the learner's questi
 
 function buildCoachVoicePrompt(level) {
     return `You are an English Learning Coach for a Myanmar learner at ${level.title} (${level.cefr}). Listen to the learner's voice question or speaking attempt. Reply directly, transcribe the important sentence, correct one key issue, explain it briefly in Burmese, give one pronunciation or fluency tip, and ask one helpful follow-up question. Be warm and practical.`;
+}
+
+function buildPronunciationPrompt(level, lesson) {
+    return `You are a careful English pronunciation coach for a Myanmar learner at ${level.title} (${level.cefr}). Analyze this voice attempt in relation to the lesson ${lesson ? lesson.title : 'speaking practice'}.
+Return JSON only: {"score":0,"clarity":0,"sounds":[{"word":"...","issue":"...","tip":"..."}],"stressTip":"...","correctedSentence":"...","repeatTask":"..."}.
+Score from 0 to 10. Mention only observable, helpful issues. Be encouraging and explain the key tips in Burmese after the JSON is interpreted by the app.`;
+}
+
+function buildWordReviewPrompt(level, words) {
+    return `You are a friendly vocabulary teacher for a Myanmar learner at ${level.title} (${level.cefr}). Create one short review activity for these words: ${JSON.stringify(words)}.
+Return JSON only: {"question":"...","options":["...","...","...","..."],"answerIndex":0,"explanation":"...","speakingSentence":"..."}. Make the question practical and use the target words naturally.`;
+}
+
+function buildSkillReportPrompt(level, report) {
+    return `You are a professional English teacher summarizing progress for a learner at ${level.title} (${level.cefr}). Skill scores: ${JSON.stringify(report)}. Write a concise Burmese progress report with strengths, two priorities, and a seven-day speaking recommendation. Do not claim this is an official exam certificate.`;
 }
 
 function buildDailyPlanPrompt(level, lesson, stats, date) {
@@ -161,6 +176,9 @@ module.exports = {
     buildQuizFeedbackPrompt,
     buildCoachPrompt,
     buildCoachVoicePrompt,
+    buildPronunciationPrompt,
+    buildWordReviewPrompt,
+    buildSkillReportPrompt,
     buildDailyPlanPrompt,
     buildAssessmentPrompt
 };

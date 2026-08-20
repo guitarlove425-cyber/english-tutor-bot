@@ -10,7 +10,7 @@ The bot supports `/start`, `/help`, `/mode`, `/course`, `/lesson`, `/nextlesson`
 
 The `/academy` command starts a placement interview and then teaches the learner through six levels: Starter (A0), Elementary (A1), Pre-Intermediate (A2), Intermediate (B1), Upper-Intermediate (B2), and Advanced/Pro (C1+). The curriculum contains 36 structured lessons with grammar, vocabulary, speaking objectives, realistic tasks, checkpoint assessments, review, points, practice streaks, role-play, pronunciation coaching, and a final Pro assessment. Starter and Elementary are available as the free path; Pre-Intermediate through Advanced/Pro are Premium levels.
 
-The bot now displays Burmese-labeled quick-action buttons after `/start` and `/help`. The main keyboard provides Speaking Academy, Academy Levels, Beginner Course, My Progress, Tutor Mode, Help, and My ID. When an Academy lesson is shown, the keyboard changes to lesson, next lesson, progress, review, role-play, lesson quiz, Learning Coach, Daily Study Plan, assessment, certificate, and main-menu buttons. Each button safely routes to the corresponding command, so users do not need to type slash commands.
+The bot now displays Burmese-labeled quick-action buttons after `/start` and `/help`. The main keyboard provides Speaking Academy, Academy Levels, Beginner Course, My Progress, Tutor Mode, Help, My ID, and Privacy controls. When an Academy lesson is shown, the keyboard changes to lesson, next lesson, progress, review, role-play, lesson quiz, Learning Coach, Daily Study Plan, Word Bank, Pronunciation Coach, Skill Report, assessment, certificate, and main-menu buttons. Each button safely routes to the corresponding command, so users do not need to type slash commands.
 
 Learners can answer every lesson with text or voice. Gemini acts as a teacher rather than only a chat partner: it explains the target language, corrects the learner, gives Burmese guidance where useful, provides pronunciation and fluency tips, asks a follow-up question, and waits for the learner to choose when to continue. Placement is adaptive, while Premium gating prevents a free account from entering paid levels without an active Premium entitlement.
 
@@ -19,6 +19,12 @@ Use `/levels` to view the curriculum, `/academylesson` to repeat the current les
 Each quiz question is generated for the learner's current level and lesson. The bot checks the selected answer, explains why it is correct or incorrect in Burmese, gives a repeat example, tracks quiz accuracy and streak, and can generate another question without repeating the recent question history. The Learning Coach stays in a continuous session so the learner can ask about speaking practice, grammar, vocabulary, pronunciation, study plans, or any English-learning difficulty by text or voice.
 
 The Daily Study Plan uses the learner's current level, lesson objective, quiz results, speaking attempts, previous streak, and recent plan completion to generate four or five measurable tasks for the current day. The tasks cover a balanced mix of speaking, listening/shadowing, vocabulary, grammar, and review with estimated minutes. Each task has a button that marks it complete and awards progress points; the plan is persisted for the day so reopening `/dailyplan` does not generate a new plan unnecessarily.
+
+The Word Bank automatically collects vocabulary from Academy lessons and schedules words with spaced repetition intervals of 1, 3, 7, 14, 30, and 60 days. `/wordbank` shows total, due, and mastered words; the review buttons create a level-appropriate activity and update each word's next due date after an answer. `/pronunciation` opens a voice-only coaching session that scores clarity, records useful sound issues, and gives a repeat task. `/skillreport` summarizes grammar, vocabulary, speaking, fluency, pronunciation, and consistency scores from the learner's stored evidence. These scores are learning indicators and are not official exam results.
+
+`/tracks` lets learners choose a focused path: General English and Travel English are free paths, while IELTS Speaking, TOEFL Speaking, Business English, and Job Interview are Premium paths. The selected track is persisted and is passed into Coach guidance, role-play context, quizzes, and Daily Study Plan generation so the practice stays aligned with the learner's goal.
+
+Privacy controls are available through `/privacy`, `/exportdata`, and `/deletedata`. Export returns the stored profile and learning records; deletion requires an explicit confirmation button and removes the user mode, Premium record, original course progress, Academy progress, Word Bank, diagnostics, quizzes, and daily plans. The deletion path is designed as a user-controlled data lifecycle feature rather than an automatic destructive action.
 
 ### Original Beginner Speaking Course
 
@@ -94,7 +100,7 @@ The bot uses the following collections:
 | `users` | Premium status, Premium expiry, and the user's selected mode |
 | `user_daily_usage` | Per-user UTC date and request count for the free limit |
 | `course_progress` | Current lesson, completed lessons, practice attempts, and speaking attempts for the original course |
-| `academy_progress` | Placement, CEFR level, current lesson, completed lessons, points, streaks, assessments, role-play, quiz state/statistics, Learning Coach session state, and daily-plan completion |
+| `academy_progress` | Placement, CEFR level, current lesson, completed lessons, points, streaks, assessments, role-play, quiz state/statistics, Learning Coach session state, daily-plan completion, Word Bank, pronunciation diagnostics, and skill scores |
 
 Usage increments use a Firestore transaction, preventing simultaneous requests from bypassing the daily limit.
 
@@ -111,7 +117,9 @@ src/bot/handlers.js       Telegram commands, course, text, voice, and document h
 src/course/content.js     Original 12-lesson beginner speaking syllabus
 src/course/teacher.js      Original course teacher prompts
 src/academy/curriculum.js  Six-level, 36-lesson Starter-to-Pro curriculum
-src/academy/teacher.js     Placement, lesson, quiz, coach, daily-plan, assessment, role-play, and feedback prompts
+src/academy/teacher.js     Placement, lesson, quiz, coach, daily-plan, Word Bank review, pronunciation, assessment, role-play, and feedback prompts
+src/academy/learning.js     Spaced repetition scheduling and skill-score helpers
+src/academy/tracks.js      Free and Premium learning-track catalog
 src/ai/gemini.js            Gemini personas and text/audio generation
 src/database/firebase.js   Firestore persistence and in-memory local fallback
 check.js                  Gemini model availability checker

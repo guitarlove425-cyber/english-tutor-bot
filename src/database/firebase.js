@@ -204,6 +204,8 @@ function defaultAcademyProgress() {
         active: false,
         placementCompleted: false,
         levelId: 'starter',
+        trackId: 'general',
+        trackHistory: [],
         lessonNumber: 1,
         completedLessons: [],
         reviewQueue: [],
@@ -225,6 +227,17 @@ function defaultAcademyProgress() {
         dailyPlan: null,
         dailyPlanDate: null,
         dailyPlanCompleted: [],
+        wordBank: [],
+        vocabularyReviewCount: 0,
+        lastVocabularyReview: null,
+        pronunciationAttempts: 0,
+        lastPronunciation: null,
+        grammarScore: null,
+        vocabularyScore: null,
+        speakingScore: null,
+        fluencyScore: null,
+        pronunciationScore: null,
+        consistencyScore: null,
         startedAt: null,
         updatedAt: null
     };
@@ -272,6 +285,44 @@ async function isPremiumUser(userId) {
     return Boolean(userData.isPremium && userData.premiumExpiry && new Date(userData.premiumExpiry) > new Date());
 }
 
+async function exportUserData(userId) {
+    const userKey = String(userId);
+    if (firebaseEnabled) {
+        const [user, courseProgress, academyProgress] = await Promise.all([
+            db.collection('users').doc(userKey).get(),
+            db.collection('course_progress').doc(userKey).get(),
+            db.collection('academy_progress').doc(userKey).get()
+        ]);
+        return {
+            user: user.exists ? user.data() : {},
+            courseProgress: courseProgress.exists ? courseProgress.data() : defaultCourseProgress(),
+            academyProgress: academyProgress.exists ? academyProgress.data() : defaultAcademyProgress()
+        };
+    }
+    const memory = getMemoryUser(userKey);
+    return {
+        user: memory,
+        courseProgress: memory.courseProgress || defaultCourseProgress(),
+        academyProgress: memory.academyProgress || defaultAcademyProgress()
+    };
+}
+
+async function deleteUserData(userId) {
+    const userKey = String(userId);
+    if (firebaseEnabled) {
+        await Promise.all([
+            db.collection('users').doc(userKey).delete(),
+            db.collection('course_progress').doc(userKey).delete(),
+            db.collection('academy_progress').doc(userKey).delete()
+        ]);
+    }
+    memoryUsers.delete(userKey);
+    for (const key of memoryDailyUsage.keys()) {
+        if (key.startsWith(`${userKey}_`)) memoryDailyUsage.delete(key);
+    }
+    return true;
+}
+
 module.exports = {
     checkUsageLimit,
     makeUserPremium,
@@ -287,6 +338,8 @@ module.exports = {
     startAcademy,
     resetAcademy,
     isPremiumUser,
+    exportUserData,
+    deleteUserData,
     isFirebaseEnabled,
     ADMIN_ID
 };

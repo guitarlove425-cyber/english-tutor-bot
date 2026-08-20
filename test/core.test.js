@@ -10,10 +10,16 @@ const {
     startCourse,
     getCourseProgress,
     completeCourseLesson,
-    resetCourse
+    resetCourse,
+    saveCourseProgress,
+    saveAcademyProgress,
+    exportUserData,
+    deleteUserData
 } = require('../src/database/firebase');
 const { BEGINNER_COURSE, getLesson } = require('../src/course/content');
 const { LEVELS, getLesson: getAcademyLesson, getNextLesson, levelIsPremium } = require('../src/academy/curriculum');
+const { seedWordBank, getDueWords, reviewWord, skillReport } = require('../src/academy/learning');
+const { TRACKS, getTrack, trackIsPremium } = require('../src/academy/tracks');
 
 test('splitMessage keeps Telegram chunks under the configured limit', () => {
     const chunks = splitMessage('a'.repeat(8000), 3900);
@@ -90,6 +96,28 @@ test('daily plan normalization creates measurable tasks and rejects invalid plan
     assert.equal(normalizeDailyPlan({ tasks: [] }, '2026-08-20'), null);
 });
 
+test('spaced repetition seeds, schedules, and reports learner skills', () => {
+    const words = seedWordBank([], 'greetings, introductions, confidence', '2026-08-20');
+    assert.equal(words.length, 3);
+    assert.equal(getDueWords(words, '2026-08-20').length, 3);
+    const reviewed = reviewWord(words[0], true, '2026-08-20');
+    assert.equal(reviewed.dueDate, '2026-08-21');
+    assert.equal(reviewed.repetitions, 1);
+    const report = skillReport({ quizAnswered: 10, quizCorrect: 8, speakingAttempts: 3, streak: 4, lastAssessment: { grammar: 7, fluency: 6, pronunciation: 5, overall: 6 } });
+    assert.equal(report.grammar, 70);
+    assert.equal(report.vocabulary, 80);
+    assert.equal(report.speaking, 60);
+    assert.ok(report.consistency > 0);
+});
+
+test('learning tracks expose free and Premium paths', () => {
+    assert.equal(TRACKS.length, 6);
+    assert.equal(getTrack('general').premium, false);
+    assert.equal(getTrack('job-interview').title, 'Job Interview');
+    assert.equal(trackIsPremium('ielts'), true);
+    assert.equal(trackIsPremium('travel'), false);
+});
+
 test('academy curriculum covers Starter through Advanced/Pro with Premium gating', () => {
     assert.equal(LEVELS.length, 6);
     assert.deepEqual(LEVELS.map((level) => level.cefr), ['A0', 'A1', 'A2', 'B1', 'B2', 'C1+']);
@@ -109,11 +137,25 @@ test('academy progress persists placement, points, assessment, and reset in memo
     assert.equal(placed.levelId, 'intermediate');
     const saved = await getAcademyProgress(userId);
     assert.equal(saved.points, 120);
+    assert.equal(saved.trackId, 'general');
     assert.deepEqual(saved.dailyPlanCompleted, []);
     await resetAcademy(userId);
     const reset = await getAcademyProgress(userId);
     assert.equal(reset.active, false);
     assert.equal(reset.levelId, 'starter');
+});
+
+test('privacy export and deletion remove learner records in memory fallback', async () => {
+    const userId = `privacy-${Date.now()}`;
+    await saveCourseProgress(userId, { active: true, currentLesson: 3 });
+    await saveAcademyProgress(userId, { active: true, wordBank: [{ id: 'word_1', word: 'hello' }] });
+    const exported = await exportUserData(userId);
+    assert.equal(exported.courseProgress.currentLesson, 3);
+    assert.equal(exported.academyProgress.wordBank.length, 1);
+    await deleteUserData(userId);
+    const after = await exportUserData(userId);
+    assert.equal(after.courseProgress.active, false);
+    assert.equal(after.academyProgress.active, false);
 });
 
 test('reply keyboards are constructed with persistent Telegram layouts', () => {
@@ -145,7 +187,7 @@ test('Academy Telegram handlers register all public flows', () => {
         telegram: { sendMessage: async () => {} }
     };
     setupHandlers(fakeBot);
-    for (const command of ['academy', 'levels', 'academylesson', 'academyquiz', 'coach', 'dailyplan', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
+    for (const command of ['academy', 'levels', 'academylesson', 'academyquiz', 'coach', 'dailyplan', 'wordbank', 'pronunciation', 'skillreport', 'tracks', 'privacy', 'exportdata', 'deletedata', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
         assert.ok(registered.commands.includes(command), `missing /${command}`);
     }
     assert.ok(registered.events.includes('text'));
@@ -159,4 +201,9 @@ test('Academy Telegram handlers register all public flows', () => {
     assert.ok(registered.hears.includes(BUTTONS.academy.quiz));
     assert.ok(registered.hears.includes(BUTTONS.academy.coach));
     assert.ok(registered.hears.includes(BUTTONS.academy.dailyPlan));
+    assert.ok(registered.hears.includes(BUTTONS.academy.wordBank));
+    assert.ok(registered.hears.includes(BUTTONS.academy.pronunciation));
+    assert.ok(registered.hears.includes(BUTTONS.academy.report));
+    assert.ok(registered.hears.includes(BUTTONS.academy.tracks));
+    assert.ok(registered.hears.includes(BUTTONS.main.privacy));
 });
