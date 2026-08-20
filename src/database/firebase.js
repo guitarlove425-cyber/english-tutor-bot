@@ -226,6 +226,7 @@ function defaultKidsProgress() {
         lastPracticeDate: null,
         lastScore: null,
         learnerProfile: null,
+        navigationSection: 'main',
         startedAt: null,
         updatedAt: null
     };
