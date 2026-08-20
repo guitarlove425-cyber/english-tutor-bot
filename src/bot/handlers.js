@@ -720,8 +720,11 @@ const BUTTONS = {
     },
     kids: {
         lesson: '📘 Kids ဒီနေ့ Lesson',
+        practice: '🧰 Kids လေ့ကျင့်ခန်း',
         progress: '📊 Kids တိုးတက်မှု',
         review: '🔁 Kids Review',
+        stages: '📚 Kids အဆင့်များ',
+        menu: '🧒 Kids Menu',
         home: '🏠 ပင်မ Menu'
     },
     mode: {
@@ -798,9 +801,23 @@ function profileKeyboard() {
 
 function kidsReplyKeyboard() {
     return Markup.keyboard([
-        [BUTTONS.kids.lesson, BUTTONS.kids.progress],
-        [BUTTONS.kids.review, BUTTONS.main.home]
+        [BUTTONS.kids.lesson, BUTTONS.kids.practice],
+        [BUTTONS.kids.review, BUTTONS.kids.progress],
+        [BUTTONS.kids.stages, BUTTONS.kids.menu],
+        [BUTTONS.main.home]
     ]).resize().persistent();
+}
+
+function kidsPracticeKeyboard() {
+    return Markup.keyboard([
+        [BUTTONS.kids.lesson, BUTTONS.kids.review],
+        [BUTTONS.kids.progress, BUTTONS.kids.stages],
+        [BUTTONS.kids.menu, BUTTONS.main.home]
+    ]).resize().persistent();
+}
+
+function kidsStagesMessage() {
+    return `📚 Kids English School အဆင့်များ\n\n${KIDS_STAGES.map((stage, index) => `${index + 1}. ${stage.title} — ${stage.cefr}\nအသက်အုပ်စု: ${stage.ageBand}\n${stage.description}`).join('\n\n')}\n\nLesson မကျွမ်းမချင်း ဆရာက ပြန်လေ့ကျင့်ပေးပြီးမှ နောက်အဆင့်ကို ဆက်ပေးပါမယ်။`;
 }
 
 function academyKeyboard() {
@@ -881,8 +898,11 @@ function setupButtonRouting(bot) {
         [BUTTONS.academy.conversation, '/conversation'],
         [BUTTONS.academy.home, '/menu'],
         [BUTTONS.kids.lesson, '/kidslesson'],
+        [BUTTONS.kids.practice, '/kidspractice'],
         [BUTTONS.kids.progress, '/kidsprogress'],
         [BUTTONS.kids.review, '/kidsreview'],
+        [BUTTONS.kids.stages, '/kidsstages'],
+        [BUTTONS.kids.menu, '/kidsmenu'],
     ];
     for (const [label, command] of routes) {
         bot.hears(label, (ctx) => bot.handleUpdate(commandUpdate(ctx, command)));
@@ -931,7 +951,7 @@ function setupHandlers(bot) {
         await ctx.reply(`မင်္ဂလာပါ ${ctx.from.first_name || 'သူငယ်ချင်း'}!\n\nကျွန်တော်က သင့်ရဲ့ AI English Tutor LinguistPro ဖြစ်ပါတယ်။\n\nလက်ရှိ Mode: ${mode}\n\nBeginner မှ Pro အထိ အဆင့်လိုက်လေ့လာရန် /academy ကိုနှိပ်ပါ။ ၁၂ ခန်းပါ အခြေခံသင်တန်းအတွက် /course ကိုနှိပ်ပါ။\nအောက်က မြန်စာခလုတ်များကို အသုံးပြုပါ။ Command အားလုံးကြည့်ရန် /help ကိုနှိပ်ပါ။`, mainKeyboard());
     });
 
-    bot.help((ctx) => ctx.reply('📚 အသုံးပြုနိုင်သော Command များ\n\n/start - Tutor ကိုစတင်ရန်\n/help - ဒီအကူအညီစာမျက်နှာကို ပြရန်\n/learning - အဆင့်လိုက်သင်ယူမှု Menu\n/practice - လေ့ကျင့်ခန်း Menu\n/profile - ကိုယ်ပိုင် Learning Profile\n/recommend - ဒီနေ့ ဆရာ့အကြံပြုချက်\n/errorclinic - အမှားပြန်သင်ခန်းစာ\n/conversation - Conversation Ladder\n/kids - Kids English School စရန်\n/kidslesson - Kids လက်ရှိ Lesson\n/kidsprogress - Kids တိုးတက်မှု\n/kidsreview - Kids Review\n/academy - Speaking Academy ကို စတင်ရန် သို့မဟုတ် ပြန်ဆက်ရန်\n/levels - Free/Premium အဆင့်များကြည့်ရန်\n/academylesson - လက်ရှိ Academy lesson ပြန်ကြည့်ရန်\n/teacherlesson - ဆရာဦးဆောင်သင်ခန်းစာ စရန်\n/homework - ဒီနေ့အိမ်စာကြည့်ရန်\n/academyquiz - လက်ရှိ lesson အတွက် Quiz မေးခွန်းအသစ်ရရန်\n/coach - English Learning Coach ကို မေးမြန်းရန်\n/dailyplan - ဒီနေ့အတွက် ကိုယ်ပိုင် Study Plan ဆွဲရန်\n/wordbank - Vocabulary ပြန်လေ့ကျင့်ရန်\n/pronunciation - Pronunciation Coach ဖြင့် အသံလေ့ကျင့်ရန်\n/livevoice - Premium voice conversation စရန်\n/endlive - Voice conversation ပြီးဆုံးရန်\n/skillreport - မိမိ English Skill Report ကြည့်ရန်\n/tracks - General, Travel, IELTS, TOEFL, Business, Job Interview track ရွေးရန်\n/nextacademylesson - လက်ရှိ lesson ပြီးပြီး နောက် lesson သွားရန်\n/academyprogress - Level, points, streak, progress ကြည့်ရန်\n/academyreview - ပြီးခဲ့သော lesson ပြန်လေ့ကျင့်ရန်\n/academyassessment - Checkpoint assessment ဖြေရန်\n/academyroleplay - Real-life role-play စရန်\n/academycertificate - Pro completion status ကြည့်ရန်\n/academyreset - Academy progress ပြန်စရန်\n/course - ၁၂ ခန်းပါ အခြေခံသင်တန်းဖွင့်ရန်\n/teacherlesson - Beginner/Academy lesson ကို ဆရာလို အဆင့်လိုက်သင်ရန်\n/mode - Normal, IELTS, Translator Mode ရွေးရန်\n/myid - Telegram ID ကြည့်ရန်\n/privacy - Privacy controls ကြည့်ရန်\n/exportdata - မိမိ learning data export ရယူရန်\n/deletedata - မိမိ learning data ဖျက်ရန်\n/classroom - မိမိ Classroom ကြည့်ရန်\n/classroom_join CODE - ဆရာ့ Classroom ထဲဝင်ရန်\n/teacher - ဆရာအတွက် Teacher Center\n/classroom_create CLASS_NAME - ဆရာက အတန်းဖန်တီးရန်\n/classroom_dashboard CODE - ဆရာက ကျောင်းသားတိုးတက်မှုကြည့်ရန်\n/upgrade USER_ID DAYS - Admin က Premium ကို ကိုယ်တိုင်ဖွင့်ပေးရန်\n\nအောက်က မြန်စာခလုတ်များကို အသုံးပြုပါ။ Academy ထဲမှာ စာသား သို့မဟုတ် အသံပို့ပါ။ ကျွန်တော်က ဆရာလို သင်ပေး၊ ပြင်ပေး၊ Quiz မေးပြီး အကြံပေးပါမယ်။', mainKeyboard()));
+    bot.help((ctx) => ctx.reply('📚 အသုံးပြုနိုင်သော Command များ\n\n/start - Tutor ကိုစတင်ရန်\n/help - ဒီအကူအညီစာမျက်နှာကို ပြရန်\n/learning - အဆင့်လိုက်သင်ယူမှု Menu\n/practice - လေ့ကျင့်ခန်း Menu\n/profile - ကိုယ်ပိုင် Learning Profile\n/recommend - ဒီနေ့ ဆရာ့အကြံပြုချက်\n/errorclinic - အမှားပြန်သင်ခန်းစာ\n/conversation - Conversation Ladder\n/kids - Kids English School စရန်\n/kidslesson - Kids လက်ရှိ Lesson\n/kidspractice - Kids လေ့ကျင့်ခန်း Menu\n/kidsstages - Kids အဆင့်များ\n/kidsmenu - Kids Menu\n/kidsprogress - Kids တိုးတက်မှု\n/kidsreview - Kids Review\n/academy - Speaking Academy ကို စတင်ရန် သို့မဟုတ် ပြန်ဆက်ရန်\n/levels - Free/Premium အဆင့်များကြည့်ရန်\n/academylesson - လက်ရှိ Academy lesson ပြန်ကြည့်ရန်\n/teacherlesson - ဆရာဦးဆောင်သင်ခန်းစာ စရန်\n/homework - ဒီနေ့အိမ်စာကြည့်ရန်\n/academyquiz - လက်ရှိ lesson အတွက် Quiz မေးခွန်းအသစ်ရရန်\n/coach - English Learning Coach ကို မေးမြန်းရန်\n/dailyplan - ဒီနေ့အတွက် ကိုယ်ပိုင် Study Plan ဆွဲရန်\n/wordbank - Vocabulary ပြန်လေ့ကျင့်ရန်\n/pronunciation - Pronunciation Coach ဖြင့် အသံလေ့ကျင့်ရန်\n/livevoice - Premium voice conversation စရန်\n/endlive - Voice conversation ပြီးဆုံးရန်\n/skillreport - မိမိ English Skill Report ကြည့်ရန်\n/tracks - General, Travel, IELTS, TOEFL, Business, Job Interview track ရွေးရန်\n/nextacademylesson - လက်ရှိ lesson ပြီးပြီး နောက် lesson သွားရန်\n/academyprogress - Level, points, streak, progress ကြည့်ရန်\n/academyreview - ပြီးခဲ့သော lesson ပြန်လေ့ကျင့်ရန်\n/academyassessment - Checkpoint assessment ဖြေရန်\n/academyroleplay - Real-life role-play စရန်\n/academycertificate - Pro completion status ကြည့်ရန်\n/academyreset - Academy progress ပြန်စရန်\n/course - ၁၂ ခန်းပါ အခြေခံသင်တန်းဖွင့်ရန်\n/teacherlesson - Beginner/Academy lesson ကို ဆရာလို အဆင့်လိုက်သင်ရန်\n/mode - Normal, IELTS, Translator Mode ရွေးရန်\n/myid - Telegram ID ကြည့်ရန်\n/privacy - Privacy controls ကြည့်ရန်\n/exportdata - မိမိ learning data export ရယူရန်\n/deletedata - မိမိ learning data ဖျက်ရန်\n/classroom - မိမိ Classroom ကြည့်ရန်\n/classroom_join CODE - ဆရာ့ Classroom ထဲဝင်ရန်\n/teacher - ဆရာအတွက် Teacher Center\n/classroom_create CLASS_NAME - ဆရာက အတန်းဖန်တီးရန်\n/classroom_dashboard CODE - ဆရာက ကျောင်းသားတိုးတက်မှုကြည့်ရန်\n/upgrade USER_ID DAYS - Admin က Premium ကို ကိုယ်တိုင်ဖွင့်ပေးရန်\n\nအောက်က မြန်စာခလုတ်များကို အသုံးပြုပါ။ Academy ထဲမှာ စာသား သို့မဟုတ် အသံပို့ပါ။ ကျွန်တော်က ဆရာလို သင်ပေး၊ ပြင်ပေး၊ Quiz မေးပြီး အကြံပေးပါမယ်။', mainKeyboard()));
 
     bot.command('menu', (ctx) => ctx.reply('🏠 ပင်မ Menu', mainKeyboard()));
     bot.command('learning', (ctx) => ctx.reply('📚 အဆင့်လိုက်သင်ယူမယ့်နေရာကို ရွေးပါ။', learningKeyboard()));
@@ -986,6 +1006,13 @@ function setupHandlers(bot) {
         return ctx.reply('🧒 Kids English School မှ ကြိုဆိုပါတယ်။\n\nကလေးရဲ့ အသက်အုပ်စုကို ရွေးပါ။ အသက်အုပ်စုက သင်ကြားပုံနဲ့ စကားလုံးခက်ခဲမှုကို ချိန်ညှိရန်သာဖြစ်ပြီး ကလေးရဲ့ ကိုယ်ရေးအချက်အလက် မတောင်းပါ။', kidsAgeKeyboard());
     });
     bot.command('kidslesson', async (ctx) => sendKidsLesson(ctx, await getKidsProgress(ctx.from.id)));
+    bot.command('kidspractice', async (ctx) => {
+        const progress = await getKidsProgress(ctx.from.id);
+        if (!progress.active) return ctx.reply('Kids English School စရန် /kids ကိုနှိပ်ပါ။', mainKeyboard());
+        return ctx.reply('🧰 Kids လေ့ကျင့်ခန်းအတွက် Lesson ကိုရွေးပြီး စာဖြင့်ဖြစ်စေ အသံဖြင့်ဖြစ်စေ ဖြေပါ။', kidsPracticeKeyboard());
+    });
+    bot.command('kidsstages', (ctx) => ctx.reply(kidsStagesMessage(), kidsReplyKeyboard()));
+    bot.command('kidsmenu', (ctx) => ctx.reply('🧒 Kids English School Menu\n\nလုပ်ချင်တာကို အောက်ကခလုတ်ကနေ ရွေးပါ။', kidsReplyKeyboard()));
     bot.command('kidsprogress', async (ctx) => {
         const progress = await getKidsProgress(ctx.from.id);
         if (!progress.active) return ctx.reply('Kids English School စရန် /kids ကိုနှိပ်ပါ။', mainKeyboard());

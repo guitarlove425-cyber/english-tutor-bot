@@ -298,7 +298,7 @@ test('Academy Telegram handlers register all public flows', () => {
         telegram: { sendMessage: async () => {} }
     };
     setupHandlers(fakeBot);
-    for (const command of ['academy', 'kids', 'kidslesson', 'kidsprogress', 'kidsreview', 'learning', 'practice', 'profile', 'recommend', 'errorclinic', 'conversation', 'levels', 'academylesson', 'teacherlesson', 'homework', 'academyquiz', 'coach', 'dailyplan', 'wordbank', 'pronunciation', 'livevoice', 'endlive', 'skillreport', 'tracks', 'privacy', 'classroom', 'teacher', 'classroom_create', 'classroom_join', 'classroom_dashboard', 'exportdata', 'deletedata', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
+    for (const command of ['academy', 'kids', 'kidslesson', 'kidspractice', 'kidsstages', 'kidsmenu', 'kidsprogress', 'kidsreview', 'learning', 'practice', 'profile', 'recommend', 'errorclinic', 'conversation', 'levels', 'academylesson', 'teacherlesson', 'homework', 'academyquiz', 'coach', 'dailyplan', 'wordbank', 'pronunciation', 'livevoice', 'endlive', 'skillreport', 'tracks', 'privacy', 'classroom', 'teacher', 'classroom_create', 'classroom_join', 'classroom_dashboard', 'exportdata', 'deletedata', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
         assert.ok(registered.commands.includes(command), `missing /${command}`);
     }
     assert.ok(registered.events.includes('text'));
@@ -307,6 +307,9 @@ test('Academy Telegram handlers register all public flows', () => {
     assert.ok(registered.hears.includes(BUTTONS.main.learning));
     assert.ok(registered.hears.includes(BUTTONS.main.kids));
     assert.ok(registered.hears.includes(BUTTONS.kids.lesson));
+    assert.ok(registered.hears.includes(BUTTONS.kids.practice));
+    assert.ok(registered.hears.includes(BUTTONS.kids.stages));
+    assert.ok(registered.hears.includes(BUTTONS.kids.menu));
     assert.ok(registered.hears.includes(BUTTONS.main.practice));
     assert.ok(registered.hears.includes(BUTTONS.main.profile));
     assert.ok(registered.hears.includes('📘 ဒီသင်ခန်းစာ'));
