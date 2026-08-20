@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { setupHandlers, splitMessage, englishSpeechChunks } = require('../src/bot/handlers');
+const { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, academyKeyboard } = require('../src/bot/handlers');
 const {
     checkUsageLimit,
     makeUserPremium,
@@ -93,14 +93,25 @@ test('academy progress persists placement, points, assessment, and reset in memo
     assert.equal(reset.levelId, 'starter');
 });
 
+test('reply keyboards are constructed with persistent Telegram layouts', () => {
+    const main = mainKeyboard();
+    const academy = academyKeyboard();
+    assert.ok(main.reply_markup.keyboard.length >= 3);
+    assert.ok(academy.reply_markup.keyboard.length >= 4);
+    assert.equal(main.reply_markup.resize_keyboard, true);
+    assert.equal(academy.reply_markup.is_persistent, true);
+});
+
 test('Academy Telegram handlers register all public flows', () => {
-    const registered = { commands: [], actions: [], events: [] };
+    const registered = { commands: [], actions: [], events: [], hears: [] };
     const fakeBot = {
         start: () => {},
         help: () => {},
         command: (name) => registered.commands.push(name),
         action: (name) => registered.actions.push(name),
         on: (name) => registered.events.push(name),
+        hears: (label) => registered.hears.push(label),
+        handleUpdate: async () => {},
         telegram: { sendMessage: async () => {} }
     };
     setupHandlers(fakeBot);
@@ -109,4 +120,7 @@ test('Academy Telegram handlers register all public flows', () => {
     }
     assert.ok(registered.events.includes('text'));
     assert.ok(registered.events.includes('voice'));
+    assert.ok(registered.hears.includes('🏫 Speaking Academy'));
+    assert.ok(registered.hears.includes('📘 ဒီသင်ခန်းစာ'));
+    assert.ok(registered.hears.includes('➡️ နောက်သင်ခန်းစာ'));
 });

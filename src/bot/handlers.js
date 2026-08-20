@@ -135,6 +135,7 @@ async function sendAcademyLesson(ctx, progress) {
     if (!(await hasAcademyAccess(ctx, level.id))) return;
     await replyLongText(ctx, buildAcademyLessonIntro(lesson, level, level.lessons.length));
     await sendEnglishVoiceReply(ctx, `${lesson.title}. ${lesson.objective}. ${lesson.grammar}.`);
+    await ctx.reply('Use the quick buttons below to continue your Academy lesson.', academyKeyboard());
 }
 
 function parseJsonResponse(text) {
@@ -151,6 +152,46 @@ function parseJsonResponse(text) {
     }
 }
 
+const BUTTONS = {
+    main: {
+        academy: '🏫 Speaking Academy',
+        levels: '📚 Academy Levels',
+        beginner: '🧑‍🏫 Beginner Course',
+        progress: '📊 My Progress',
+        mode: '🎛 Tutor Mode',
+        help: '❓ Help',
+        myid: '🆔 My ID'
+    },
+    academy: {
+        lesson: '📘 ဒီသင်ခန်းစာ',
+        next: '➡️ နောက်သင်ခန်းစာ',
+        progress: '📊 Academy Progress',
+        review: '🔁 Review',
+        roleplay: '🎭 Role-play',
+        assessment: '📝 Assessment',
+        certificate: '🏆 Certificate',
+        home: '🏠 ပင်မ Menu'
+    }
+};
+
+function mainKeyboard() {
+    return Markup.keyboard([
+        [BUTTONS.main.academy, BUTTONS.main.levels],
+        [BUTTONS.main.beginner, BUTTONS.main.progress],
+        [BUTTONS.main.mode, BUTTONS.main.help],
+        [BUTTONS.main.myid]
+    ]).resize().persistent();
+}
+
+function academyKeyboard() {
+    return Markup.keyboard([
+        [BUTTONS.academy.lesson, BUTTONS.academy.next],
+        [BUTTONS.academy.progress, BUTTONS.academy.review],
+        [BUTTONS.academy.roleplay, BUTTONS.academy.assessment],
+        [BUTTONS.academy.certificate, BUTTONS.academy.home]
+    ]).resize().persistent();
+}
+
 function modeKeyboard() {
     return Markup.inlineKeyboard([
         [Markup.button.callback('Normal Tutor (LinguistPro)', 'set_default')],
@@ -159,13 +200,49 @@ function modeKeyboard() {
     ]);
 }
 
+function commandUpdate(ctx, command) {
+    const message = {
+        ...ctx.update.message,
+        text: command,
+        entities: [{ type: 'bot_command', offset: 0, length: command.length }]
+    };
+    return { ...ctx.update, message };
+}
+
+function setupButtonRouting(bot) {
+    const routes = [
+        [BUTTONS.main.academy, '/academy'],
+        [BUTTONS.main.levels, '/levels'],
+        [BUTTONS.main.beginner, '/course'],
+        [BUTTONS.main.progress, '/academyprogress'],
+        [BUTTONS.main.mode, '/mode'],
+        [BUTTONS.main.help, '/help'],
+        [BUTTONS.main.myid, '/myid'],
+        [BUTTONS.academy.lesson, '/academylesson'],
+        [BUTTONS.academy.next, '/nextacademylesson'],
+        [BUTTONS.academy.progress, '/academyprogress'],
+        [BUTTONS.academy.review, '/academyreview'],
+        [BUTTONS.academy.roleplay, '/academyroleplay'],
+        [BUTTONS.academy.assessment, '/academyassessment'],
+        [BUTTONS.academy.certificate, '/academycertificate'],
+        [BUTTONS.academy.home, '/menu']
+    ];
+    for (const [label, command] of routes) {
+        bot.hears(label, (ctx) => bot.handleUpdate(commandUpdate(ctx, command)));
+    }
+}
+
 function setupHandlers(bot) {
     bot.start(async (ctx) => {
         const mode = await getCurrentMode(ctx.from.id);
-        await ctx.reply(`Hello ${ctx.from.first_name || 'there'}!\n\nI am LinguistPro, your AI English Tutor.\n\nCurrent mode: ${mode}\n\nFor a complete step-by-step journey from beginner to Pro, send /academy. For the original beginner lessons, send /course.\nUse /levels to view the Academy, /help for all commands, or send text/voice to begin.`);
+        await ctx.reply(`Hello ${ctx.from.first_name || 'there'}!\n\nI am LinguistPro, your AI English Tutor.\n\nCurrent mode: ${mode}\n\nFor a complete step-by-step journey from beginner to Pro, send /academy. For the original beginner lessons, send /course.\nUse the quick buttons below or /help for all commands.`, mainKeyboard());
     });
 
-    bot.help((ctx) => ctx.reply('Commands:\n/start - Start the tutor\n/help - Show help\n/academy - Start or resume the full Speaking Academy\n/levels - View Free and Premium levels\n/academylesson - Show the current Academy lesson\n/nextacademylesson - Complete the current Academy lesson\n/academyprogress - View level, points, streak, and progress\n/academyreview - Review a completed lesson\n/academyassessment - Take a checkpoint assessment\n/academyreset - Reset Academy progress\n/course - Open the original 12-lesson beginner course\n/mode - Choose Normal, IELTS, or Translator mode\n/myid - Show your Telegram ID\n/upgrade USER_ID DAYS - Admin only\n\nIn Academy practice, send text or voice and I will teach, correct, and coach you like a personal teacher.'));
+    bot.help((ctx) => ctx.reply('Commands:\n/start - Start the tutor\n/help - Show help\n/academy - Start or resume the full Speaking Academy\n/levels - View Free and Premium levels\n/academylesson - Show the current Academy lesson\n/nextacademylesson - Complete the current Academy lesson\n/academyprogress - View level, points, streak, and progress\n/academyreview - Review a completed lesson\n/academyassessment - Take a checkpoint assessment\n/academyroleplay - Start a realistic role-play\n/academycertificate - View Pro completion status\n/academyreset - Reset Academy progress\n/course - Open the original 12-lesson beginner course\n/mode - Choose Normal, IELTS, or Translator mode\n/myid - Show your Telegram ID\n/upgrade USER_ID DAYS - Admin only\n\nUse the quick buttons below. In Academy practice, send text or voice and I will teach, correct, and coach you like a personal teacher.', mainKeyboard()));
+
+    bot.command('menu', (ctx) => ctx.reply('🏠 Main menu', mainKeyboard()));
+
+    setupButtonRouting(bot);
 
     bot.command('mode', (ctx) => ctx.reply('Choose a tutor mode:', modeKeyboard()));
 
@@ -611,4 +688,4 @@ function setupHandlers(bot) {
     });
 }
 
-module.exports = { setupHandlers, splitMessage, englishSpeechChunks };
+module.exports = { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, academyKeyboard, BUTTONS };
