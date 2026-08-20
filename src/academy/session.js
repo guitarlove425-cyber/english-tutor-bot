@@ -108,14 +108,30 @@ function completeHomework(items, homeworkId) {
 
 function scheduleReview(queue, item) {
     const source = Array.isArray(queue) ? queue : [];
+    const existing = source.find((entry) => entry.id === String(item.id || '')) || {};
     const entry = {
         id: String(item.id || `review_${Date.now()}`),
         type: item.type || 'lesson',
         title: String(item.title || 'ပြန်လည်လေ့ကျင့်ရန်').slice(0, 160),
-        dueDate: item.dueDate || new Date(Date.now() + 86400000).toISOString().slice(0, 10),
-        reason: String(item.reason || 'ဒီနေ့သင်ခန်းစာကို ပြန်နွေးရန်').slice(0, 240)
+        dueDate: item.dueDate || existing.dueDate || new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+        reason: String(item.reason || 'ဒီနေ့သင်ခန်းစာကို ပြန်နွေးရန်').slice(0, 240),
+        completed: false,
+        completedAt: null
     };
-    return [...source.filter((existing) => existing.id !== entry.id), entry].slice(-30);
+    return [...source.filter((queued) => queued.id !== entry.id), entry].slice(-30);
+}
+
+function getDueReviews(queue = [], date = new Date().toISOString().slice(0, 10)) {
+    return (Array.isArray(queue) ? queue : [])
+        .filter((entry) => !entry.completed && (!entry.dueDate || entry.dueDate <= date))
+        .sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || '')));
+}
+
+function completeReview(queue = [], reviewId) {
+    const completedAt = new Date().toISOString();
+    return (Array.isArray(queue) ? queue : []).map((entry) => entry.id === String(reviewId)
+        ? { ...entry, completed: true, completedAt }
+        : entry);
 }
 
 module.exports = {
@@ -130,5 +146,7 @@ module.exports = {
     normalizeHomework,
     assignHomework,
     completeHomework,
-    scheduleReview
+    scheduleReview,
+    getDueReviews,
+    completeReview
 };

@@ -42,7 +42,10 @@ const {
     getDueWords,
     reviewWord,
     mergeReviewedWord,
-    skillReport
+    skillReport,
+    recordLessonEvidence,
+    canAdvanceLesson,
+    weakSkills
 } = require('../academy/learning');
 const { TRACKS, getTrack, trackIsPremium } = require('../academy/tracks');
 const {
@@ -63,6 +66,7 @@ const {
     buildSkillReportPrompt,
     buildDailyPlanPrompt,
     buildTeacherPhasePrompt,
+    buildRemediationPrompt,
     buildAssessmentPrompt
 } = require('../academy/teacher');
 const {
@@ -72,7 +76,9 @@ const {
     teacherPhaseMessage,
     assignHomework,
     completeHomework,
-    scheduleReview
+    scheduleReview,
+    getDueReviews,
+    completeReview
 } = require('../academy/session');
 
 const TELEGRAM_TEXT_LIMIT = 3900;
@@ -143,6 +149,38 @@ function homeworkKeyboard(items = []) {
     return Markup.inlineKeyboard(buttons);
 }
 
+function masteryEvidenceScore(phase, learnerAnswer = '', isVoice = false) {
+    if (!learnerAnswer && !isVoice) return 0;
+    if (phase === 'assess') return 80;
+    if (phase === 'independent' || isVoice) return 75;
+    if (phase === 'check') return 70;
+    if (phase === 'guided') return 60;
+    return 40;
+}
+
+function masteryPosition(context) {
+    return {
+        levelId: context.kind === 'academy' ? context.lesson.levelId : 'beginner',
+        lessonNumber: context.kind === 'academy' ? context.lesson.number : context.lesson.id
+    };
+}
+
+function normalizeAssessmentScores(value = {}) {
+    const score = (key) => {
+        const number = Number(value[key]);
+        return Number.isFinite(number) ? Math.max(0, Math.min(10, Math.round(number * 10) / 10)) : 0;
+    };
+    return {
+        ...value,
+        overall: score('overall'),
+        grammar: score('grammar'),
+        vocabulary: score('vocabulary'),
+        fluency: score('fluency'),
+        pronunciation: score('pronunciation'),
+        taskCompletion: score('taskCompletion')
+    };
+}
+
 function homeworkMessage(items = []) {
     if (!items.length) return '🏠 အိမ်စာ မသတ်မှတ်ရသေးပါ။ သင်ခန်းစာအတွင်း 🏠 အိမ်စာ ခလုတ်ကိုနှိပ်ပါ။';
     const lines = items.map((item) => `${item.completed ? '✅' : '⬜'} ${item.title}\n   ${item.instructions}${item.dueDate ? `\n   ပြီးရမည့်ရက်: ${item.dueDate}` : ''}`);
@@ -181,6 +219,15 @@ async function runTeacherPhase(ctx, requestedPhase = 'explain', learnerAnswer = 
         checksPassed: phase === 'check' ? current.checksPassed + 1 : current.checksPassed,
         lastAnswer: learnerAnswer || current.lastAnswer || null
     });
+    const position = masteryPosition(context);
+    const evidenceScore = masteryEvidenceScore(phase || current.phase, learnerAnswer);
+    const lessonMastery = evidenceScore > 0 || phase === 'check'
+        ? recordLessonEvidence(context.progress.lessonMastery || {}, position.levelId, position.lessonNumber, {
+            score: evidenceScore,
+            checkPassed: phase === 'check' && Boolean(String(learnerAnswer || '').trim()),
+            remediation: weakSkills(context.progress)
+        })
+        : (context.progress.lessonMastery || {});
     const isHomework = next.phase === 'homework';
     const homework = isHomework
         ? assignHomework([
@@ -195,7 +242,8 @@ async function runTeacherPhase(ctx, requestedPhase = 'explain', learnerAnswer = 
         ...context.progress,
         teacherSession: next,
         homework,
-        reviewQueue
+        reviewQueue,
+        lessonMastery
     });
     await replyLongText(ctx, `👩‍🏫 ${teacherPhaseMessage(next)}\n\n${raw}`);
     await ctx.reply('အောက်ကခလုတ်နဲ့ နောက်တစ်ဆင့်ကို ဆက်လုပ်ပါ။', teacherLessonKeyboard(next));
@@ -212,9 +260,15 @@ async function runTeacherVoicePhase(ctx, buffer, mimeType = 'audio/ogg') {
         attempts: current.attempts + 1,
         lastVoiceAt: new Date().toISOString()
     });
+    const position = masteryPosition(context);
+    const lessonMastery = recordLessonEvidence(context.progress.lessonMastery || {}, position.levelId, position.lessonNumber, {
+        score: masteryEvidenceScore(current.phase, '', true),
+        remediation: weakSkills(context.progress)
+    });
     const updated = await saveTeacherContext(ctx, context, {
         ...context.progress,
         teacherSession: next,
+        lessonMastery,
         speakingAttempts: Number(context.progress.speakingAttempts || 0) + 1,
         practiceAttempts: Number(context.progress.practiceAttempts || 0) + 1,
         points: Number(context.progress.points || 0) + 10
@@ -243,7 +297,9 @@ function courseProgressMessage(progress) {
     const completed = Array.isArray(progress.completedLessons) ? progress.completedLessons.length : 0;
     const currentLesson = getBeginnerLesson(progress.currentLesson) || BEGINNER_COURSE[BEGINNER_COURSE.length - 1];
     const percentage = Math.round((completed / BEGINNER_COURSE.length) * 100);
-    return `📊 Beginner Course တိုးတက်မှု\n\nပြီးဆုံးပြီးသော lesson: ${completed}/${BEGINNER_COURSE.length} (${percentage}%)\nလက်ရှိ lesson: ${currentLesson.id}. ${currentLesson.title}\nလေ့ကျင့်မှုအကြိမ်: ${progress.practiceAttempts || 0}\nSpeaking အကြိမ်: ${progress.speakingAttempts || 0}\n\nလက်ရှိ lesson ကြည့်ရန် /lesson၊ အဆင်သင့်ဖြစ်ရင် နောက် lesson သွားရန် /nextlesson၊ ပြန်စရန် /resetcourse ကိုနှိပ်ပါ။`;
+    const currentMastery = progress.lessonMastery?.[`beginner-${currentLesson.id}`];
+    const masteryText = currentMastery?.mastered ? 'ကျွမ်းကျင်ပြီး' : `လေ့ကျင့်ရန်လိုသေး (${currentMastery?.bestScore || 0}/100)`;
+    return `📊 Beginner Course တိုးတက်မှု\n\nပြီးဆုံးပြီးသော lesson: ${completed}/${BEGINNER_COURSE.length} (${percentage}%)\nလက်ရှိ lesson: ${currentLesson.id}. ${currentLesson.title}\nလက်ရှိ lesson mastery: ${masteryText}\nလေ့ကျင့်မှုအကြိမ်: ${progress.practiceAttempts || 0}\nSpeaking အကြိမ်: ${progress.speakingAttempts || 0}\n\nလက်ရှိ lesson ကြည့်ရန် /lesson၊ mastery ရရန် ဆရာ့အဆင့်များကို လုပ်ရန် /teacherlesson၊ အဆင်သင့်ဖြစ်ရင် နောက် lesson သွားရန် /nextlesson၊ ပြန်စရန် /resetcourse ကိုနှိပ်ပါ။`;
 }
 
 async function savePracticeAttempt(userId, progress, isSpeaking) {
@@ -267,7 +323,10 @@ function academyProgressMessage(progress) {
     const premiumLabel = level.premium ? 'Premium' : 'Free';
     const track = getTrack(progress.trackId);
     const dailyDone = progress.dailyPlan ? `${(progress.dailyPlanCompleted || []).length}/${progress.dailyPlan.tasks.length}` : 'Not started';
-    return `🏫 English Speaking Academy\n\nအဆင့်: ${level.title} (${level.cefr}) — ${premiumLabel}\nလေ့လာမည့်လမ်းကြောင်း: ${track.title}\nလက်ရှိ lesson: ${lesson ? `${lesson.number}. ${lesson.title}` : 'ပြီးဆုံးပါပြီ'}\nပြီးဆုံးပြီးသော lesson: ${completed}/${total} (${percent}%)\nPoints: ${progress.points || 0}\nလေ့ကျင့်မှုအကြိမ်: ${progress.practiceAttempts || 0}\nSpeaking အကြိမ်: ${progress.speakingAttempts || 0}\nQuiz အမှတ်: ${progress.quizCorrect || 0}/${progress.quizAnswered || 0}\nQuiz streak: ${progress.quizStreak || 0}\nCoach မေးမြန်းမှု: ${progress.coachQuestions || 0}\nဒီနေ့ plan: ${dailyDone}\nStreak: ${progress.streak || 0} ရက်\n\nLesson ပြန်ကြည့်ရန် /academylesson၊ Quiz အသစ်အတွက် /academyquiz၊ အကြံဉာဏ်မေးရန် /coach၊ ဒီနေ့ plan အတွက် /dailyplan၊ Review အတွက် /academyreview၊ Assessment အတွက် /academyassessment၊ ပြန်စရန် /academyreset ကိုနှိပ်ပါ။`;
+    const dueReviews = getDueReviews(progress.reviewQueue, todayUtc()).length;
+    const masteredLessons = Object.values(progress.lessonMastery || {}).filter((item) => item && item.mastered).length;
+    const weak = weakSkills(progress);
+    return `🏫 English Speaking Academy\n\nအဆင့်: ${level.title} (${level.cefr}) — ${premiumLabel}\nလေ့လာမည့်လမ်းကြောင်း: ${track.title}\nလက်ရှိ lesson: ${lesson ? `${lesson.number}. ${lesson.title}` : 'ပြီးဆုံးပါပြီ'}\nပြီးဆုံးပြီးသော lesson: ${completed}/${total} (${percent}%)\nPoints: ${progress.points || 0}\nလေ့ကျင့်မှုအကြိမ်: ${progress.practiceAttempts || 0}\nSpeaking အကြိမ်: ${progress.speakingAttempts || 0}\nQuiz အမှတ်: ${progress.quizCorrect || 0}/${progress.quizAnswered || 0}\nQuiz streak: ${progress.quizStreak || 0}\nMastered lessons: ${masteredLessons}\nDue reviews: ${dueReviews}\nအာရုံစိုက်လေ့ကျင့်ရန် skill: ${weak.join(', ') || 'မရှိပါ'}\nCoach မေးမြန်းမှု: ${progress.coachQuestions || 0}\nဒီနေ့ plan: ${dailyDone}\nStreak: ${progress.streak || 0} ရက်\n\nLesson ပြန်ကြည့်ရန် /academylesson၊ Quiz အသစ်အတွက် /academyquiz၊ အကြံဉာဏ်မေးရန် /coach၊ ဒီနေ့ plan အတွက် /dailyplan၊ Review အတွက် /academyreview၊ Assessment အတွက် /academyassessment၊ ပြန်စရန် /academyreset ကိုနှိပ်ပါ။`;
 }
 
 async function hasAcademyAccess(ctx, levelId) {
@@ -316,14 +375,18 @@ function parseJsonResponse(text) {
 
 function normalizeQuiz(data) {
     if (!data || typeof data.question !== 'string' || !Array.isArray(data.options) || data.options.length !== 4) return null;
+    const question = data.question.trim();
+    const options = data.options.map((option) => String(option || '').trim());
     const answerIndex = Number(data.answerIndex);
+    if (!question || question.length > 600 || options.some((option) => !option || option.length > 240)) return null;
+    if (new Set(options.map((option) => option.toLowerCase())).size !== 4) return null;
     if (!Number.isInteger(answerIndex) || answerIndex < 0 || answerIndex > 3) return null;
     return {
-        teachingNote: String(data.teachingNote || 'အရင်ဆုံး ဒီမေးခွန်းနဲ့ဆိုင်တဲ့ အချက်ကို စဉ်းစားပါ။ မသိရင် clue ကို အသုံးပြုပါ။').trim(),
-        question: data.question.trim(),
-        options: data.options.map((option) => String(option).trim()),
+        teachingNote: String(data.teachingNote || 'အရင်ဆုံး ဒီမေးခွန်းနဲ့ဆိုင်တဲ့ အချက်ကို စဉ်းစားပါ။ မသိရင် clue ကို အသုံးပြုပါ။').trim().slice(0, 500),
+        question,
+        options,
         answerIndex,
-        explanation: String(data.explanation || '')
+        explanation: String(data.explanation || '').trim().slice(0, 800)
     };
 }
 
@@ -514,6 +577,9 @@ async function generateDailyPlan(ctx, force = false) {
         speakingAttempts: progress.speakingAttempts || 0,
         lastScore: progress.lastScore || null,
         streak: progress.streak || 0,
+        weakSkills: weakSkills(progress),
+        skillReport: skillReport(progress),
+        lessonMastery: progress.lessonMastery || {},
         previousPlanCompleted: progress.dailyPlanCompleted || []
     };
     const raw = await getTutorResponse(buildDailyPlanPrompt(level, lesson, stats, date), 'default');
@@ -921,12 +987,23 @@ function setupHandlers(bot) {
     bot.command('academyreview', async (ctx) => {
         try {
             const progress = await getAcademyProgress(ctx.from.id);
-            const review = progress.lastCompletedLesson || (progress.completedLessons || []).slice(-1)[0];
+            const due = getDueReviews(progress.reviewQueue, todayUtc());
+            const review = due[0] || progress.lastCompletedLesson || (progress.completedLessons || []).slice(-1)[0];
             if (!review) return ctx.reply('Review စတင်ရန် Academy lesson အနည်းဆုံးတစ်ခု ပြီးအောင်လုပ်ပါ။');
-            const position = typeof review === 'object' ? review : (() => { const parts = String(review).split('-'); return { levelId: parts.slice(0, -1).join('-'), lessonNumber: parts.at(-1) }; })();
+            const reviewId = typeof review === 'object' ? review.id : review;
+            const position = typeof review === 'object' && review.levelId
+                ? review
+                : (() => { const parts = String(reviewId).split('-'); return { levelId: parts.slice(0, -1).join('-'), lessonNumber: parts.at(-1) }; })();
             const lesson = getAcademyLesson(position.levelId, position.lessonNumber);
             const level = getLevel(position.levelId);
-            await replyLongText(ctx, `🔁 ပြန်လေ့ကျင့်ရန်: ${level.title} — ${lesson.title}\n\nရည်မှန်းချက်: ${lesson.objective}\nGrammar: ${lesson.grammar}\nVocabulary: ${lesson.vocabulary}\n\nအခု English ဖြင့် ပြန်ဖြေပါ:\n${lesson.speakingTask}`);
+            if (!lesson) return ctx.reply('ပြန်လေ့ကျင့်မည့် lesson ကို ရှာမတွေ့ပါ။ /academylesson ဖြင့် လက်ရှိ lesson ကို ဆက်လုပ်ပါ။');
+            const reviewLabel = due.length ? 'ယနေ့ due ဖြစ်နေသော Review' : 'နောက်ဆုံးသင်ခန်းစာ Review';
+            const updated = await saveAcademyProgress(ctx.from.id, {
+                ...progress,
+                session: { type: 'review', reviewId: String(reviewId), levelId: position.levelId, lessonNumber: Number(position.lessonNumber) }
+            });
+            await replyLongText(ctx, `🔁 ${reviewLabel}: ${level.title} — ${lesson.title}\n\nရည်မှန်းချက်: ${lesson.objective}\nGrammar: ${lesson.grammar}\nVocabulary: ${lesson.vocabulary}\n\nအခု English ဖြင့် ပြန်ဖြေပါ:\n${lesson.speakingTask}`);
+            return updated;
         } catch (error) {
             console.error('Academy review error:', error.message);
             await ctx.reply('🙏 Review ကို အခုဖွင့်မရသေးပါ။ ခဏနေပြီး ပြန်စမ်းပါ။');
@@ -981,6 +1058,15 @@ function setupHandlers(bot) {
             const lesson = getAcademyLesson(progress.levelId, progress.lessonNumber);
             if (!progress.active || !lesson) return ctx.reply('Academy ကို စတင်ရန် သို့မဟုတ် ပြန်ဆက်ရန် /academy ကိုနှိပ်ပါ။');
             const next = getNextLesson(progress.levelId, progress.lessonNumber);
+            if (!canAdvanceLesson(progress, progress.levelId, progress.lessonNumber)) {
+                const status = await usageOrReply(ctx);
+                if (!status) return;
+                const weakList = weakSkills(progress);
+                const weak = weakList.join(', ');
+                const remediation = await getTutorResponse(buildRemediationPrompt(getLevel(progress.levelId), lesson, weakList), 'default');
+                await replyLongText(ctx, `🧑‍🏫 ဒီ lesson ကို မကျွမ်းသေးပါ။ နောက် lesson မသွားမီ ကိုယ်တိုင် English ဖြင့် ပြန်ဖြေပြီး အကဲဖြတ်ချက် ရယူပါ။\n\nပြန်လေ့ကျင့်ရန် အားနည်းနိုင်သော skill များ: ${weak || 'speaking, grammar'}\n\n${remediation}`);
+                return ctx.reply('အောက်က 📖 ရှင်းပြချက်၊ ✍️ guided practice၊ 🗣️ independent practice သို့မဟုတ် 📝 assessment ကို ဆက်လုပ်ပါ။', teacherLessonKeyboard(progress.teacherSession));
+            }
             const completed = [...new Set([...(progress.completedLessons || []), lesson.id])];
             if (!next) {
                 await saveAcademyProgress(ctx.from.id, { ...progress, completedLessons: completed, lessonNumber: 999, session: null, lastCompletedLesson: { levelId: lesson.levelId, lessonNumber: lesson.number }, points: Number(progress.points || 0) + 100 });
@@ -1181,6 +1267,14 @@ function setupHandlers(bot) {
             if ((progress.completedLessons || []).includes(currentLesson.id)) {
                 return ctx.reply('ဒီ lesson ကို ပြီးပြီးသားပါ။ ပြန်လေ့ကျင့်ရန် /lesson ကိုနှိပ်ပါ။');
             }
+            if (!canAdvanceLesson(progress, 'beginner', currentLesson.id)) {
+                const status = await usageOrReply(ctx);
+                if (!status) return;
+                const weakList = weakSkills(progress);
+                const remediation = await getTutorResponse(buildRemediationPrompt({ title: 'Beginner', cefr: 'A0-A1' }, currentLesson, weakList), 'default');
+                await replyLongText(ctx, `🧑‍🏫 ဒီ lesson ကို မကျွမ်းသေးပါ။ နောက် lesson မသွားမီ /teacherlesson ဖြင့် လေ့ကျင့်ပြီး အကဲဖြတ်ချက် ရယူပါ။\n\nအထူးပြန်လေ့ကျင့်ရန်: ${weakList.join(', ') || 'speaking, grammar'}\n\n${remediation}`);
+                return ctx.reply('ပြန်လေ့ကျင့်ပြီး 📝 အကဲဖြတ်ရန် သို့မဟုတ် 🗣️ ကိုယ်တိုင်ပြောရန် ကိုနှိပ်ပါ။', teacherLessonKeyboard(progress.teacherSession));
+            }
             const updated = await completeCourseLesson(ctx.from.id, currentLesson.id, null);
             if (currentLesson.id >= BEGINNER_COURSE.length) {
                 return ctx.reply('🎉 ဂုဏ်ယူပါတယ်။ Beginner Speaking lesson ၁၂ ခန်းလုံး ပြီးမြောက်ပါပြီ။ /course ဖြင့် ဆက်လေ့ကျင့်နိုင်သလို IELTS လေ့ကျင့်ရန် /mode ကိုနှိပ်နိုင်ပါတယ်။');
@@ -1284,6 +1378,23 @@ function setupHandlers(bot) {
             if (!status) return;
             await ctx.sendChatAction('typing');
 
+            if (sessionType === 'review') {
+                const reviewLevel = getLevel(academy.session.levelId || academy.levelId);
+                const reviewLesson = getAcademyLesson(academy.session.levelId || academy.levelId, academy.session.lessonNumber);
+                if (!reviewLesson) return ctx.reply('Review lesson ကို ရှာမတွေ့ပါ။ /academylesson ဖြင့် လက်ရှိ lesson ကို ဆက်လုပ်ပါ။');
+                const replyMessage = await getTutorResponse(buildTeacherPhasePrompt(reviewLevel, reviewLesson, 'review', userMessage), 'default');
+                const updated = await saveAcademyProgress(ctx.from.id, {
+                    ...academy,
+                    session: null,
+                    reviewQueue: completeReview(academy.reviewQueue || [], academy.session.reviewId),
+                    practiceAttempts: Number(academy.practiceAttempts || 0) + 1,
+                    points: Number(academy.points || 0) + 8
+                });
+                await replyLongText(ctx, `👩‍🏫 Review အပြီးသတ်ချက်\n\n${replyMessage}`);
+                await sendEnglishVoiceReply(ctx, replyMessage);
+                return updated;
+            }
+
             if (sessionType === 'placement') {
                 const raw = await getTutorResponse(buildPlacementPrompt(userMessage), 'default');
                 const placement = parseJsonResponse(raw);
@@ -1315,7 +1426,12 @@ function setupHandlers(bot) {
 
             if (sessionType === 'coach') {
                 const level = getLevel(academy.levelId);
-                const replyMessage = await getTutorResponse(buildCoachPrompt(level, userMessage, getTrack(academy.trackId)), 'default');
+                const replyMessage = await getTutorResponse(buildCoachPrompt(level, userMessage, getTrack(academy.trackId), {
+                    weakSkills: weakSkills(academy),
+                    skillReport: skillReport(academy),
+                    currentLesson: academyLesson?.title || null,
+                    lessonMastery: academy.lessonMastery || {}
+                }), 'default');
                 await replyLongText(ctx, replyMessage);
                 await saveAcademyProgress(ctx.from.id, { ...academy, session: { type: 'coach' }, coachQuestions: Number(academy.coachQuestions || 0) + 1 });
                 await sendEnglishVoiceReply(ctx, replyMessage);
@@ -1337,8 +1453,16 @@ function setupHandlers(bot) {
                 const level = getLevel(academy.levelId);
                 const assessmentLesson = academyLesson || getAcademyLesson('advanced-pro', 6);
                 const raw = await getTutorResponse(buildAssessmentPrompt(level, academy.session.assessmentType, userMessage), 'default');
-                const assessment = parseJsonResponse(raw);
-                if (!assessment) return replyLongText(ctx, raw);
+                const parsedAssessment = parseJsonResponse(raw);
+                if (!parsedAssessment) return replyLongText(ctx, raw);
+                const assessment = normalizeAssessmentScores(parsedAssessment);
+                const assessmentPosition = masteryPosition({ kind: 'academy', lesson: assessmentLesson });
+                const lessonMastery = recordLessonEvidence(academy.lessonMastery || {}, assessmentPosition.levelId, assessmentPosition.lessonNumber, {
+                    score: assessment.overall * 10,
+                    checkPassed: assessment.taskCompletion >= 7,
+                    mastered: assessment.overall >= 7 && assessment.taskCompletion >= 7,
+                    remediation: Array.isArray(assessment.priorities) ? assessment.priorities : weakSkills(academy)
+                });
                 const updated = await saveAcademyProgress(ctx.from.id, {
                     ...academy,
                     session: null,
@@ -1351,7 +1475,8 @@ function setupHandlers(bot) {
                     pronunciationScore: assessment.pronunciation != null ? Number(assessment.pronunciation) * 10 : academy.pronunciationScore,
                     speakingScore: assessment.overall != null ? Number(assessment.overall) * 10 : academy.speakingScore,
                     points: Number(academy.points || 0) + Number(assessment.overall || 0) * 10,
-                    lastAssessmentLesson: assessmentLesson?.id || null
+                    lastAssessmentLesson: assessmentLesson?.id || null,
+                    lessonMastery
                 });
                 await replyLongText(ctx, `📝 ${level.title} Assessment ရလဒ်\n\nစုစုပေါင်း: ${assessment.overall || 0}/10\nGrammar: ${assessment.grammar || 0}/10\nVocabulary: ${assessment.vocabulary || 0}/10\nFluency: ${assessment.fluency || 0}/10\nPronunciation/အသံရှင်းလင်းမှု: ${assessment.pronunciation || 0}/10\nTask ပြီးစီးမှု: ${assessment.taskCompletion || 0}/10\n\nအားသာချက်: ${assessment.strength || 'ဆက်လက်လေ့ကျင့်ပါ။'}\nဦးစားပေးပြင်ရန်: ${(assessment.priorities || []).join('; ') || 'ပုံမှန် speaking practice ဆက်လုပ်ပါ။'}\nပြင်ဆင်ထားသော ဥပမာ: ${assessment.correctedExample || 'Complete sentence များကို ဆက်တည်ဆောက်ပါ။'}\nနောက်လေ့ကျင့်ရန်: ${assessment.nextTask || 'ဒီအဖြေကို အသေးစိတ်ပိုပြောပြီး ပြန်လေ့ကျင့်ပါ။'}\n\nPoints: ${updated.points}`);
                 return;
@@ -1413,6 +1538,24 @@ function setupHandlers(bot) {
             if (!response.ok) throw new Error(`Telegram file download failed: ${response.status}`);
             const buffer = Buffer.from(await response.arrayBuffer());
 
+            if (sessionType === 'review') {
+                const reviewLevel = getLevel(academy.session.levelId || academy.levelId);
+                const reviewLesson = getAcademyLesson(academy.session.levelId || academy.levelId, academy.session.lessonNumber);
+                if (!reviewLesson) return ctx.reply('Review lesson ကို ရှာမတွေ့ပါ။ /academylesson ဖြင့် လက်ရှိ lesson ကို ဆက်လုပ်ပါ။');
+                const raw = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildTeacherPhasePrompt(reviewLevel, reviewLesson, 'review', 'Voice ဖြင့် review အဖြေ ပို့ထားသည်။'));
+                const updated = await saveAcademyProgress(ctx.from.id, {
+                    ...academy,
+                    session: null,
+                    reviewQueue: completeReview(academy.reviewQueue || [], academy.session.reviewId),
+                    practiceAttempts: Number(academy.practiceAttempts || 0) + 1,
+                    speakingAttempts: Number(academy.speakingAttempts || 0) + 1,
+                    points: Number(academy.points || 0) + 10
+                });
+                await replyLongText(ctx, `👩‍🏫 Voice Review အပြီးသတ်ချက်\n\n${raw}`);
+                await sendEnglishVoiceReply(ctx, raw);
+                return updated;
+            }
+
             if (sessionType === 'placement') {
                 const raw = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildPlacementVoicePrompt());
                 const placement = parseJsonResponse(raw) || { levelId: 'starter', confidence: 0, strengths: [], priorities: ['Build confidence with simple speaking practice.'] };
@@ -1441,6 +1584,10 @@ function setupHandlers(bot) {
                 const raw = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildPronunciationPrompt(level, academyLesson));
                 const pronunciation = parseJsonResponse(raw) || { score: 0, clarity: 0, sounds: [], stressTip: 'Speak slowly and repeat the sentence.', correctedSentence: '', repeatTask: raw };
                 const score = Math.max(0, Math.min(10, Number(pronunciation.score || 0)));
+                const pronunciationPosition = academyLesson ? masteryPosition({ kind: 'academy', lesson: academyLesson }) : null;
+                const lessonMastery = pronunciationPosition
+                    ? recordLessonEvidence(academy.lessonMastery || {}, pronunciationPosition.levelId, pronunciationPosition.lessonNumber, { score: score * 10, remediation: weakSkills(academy) })
+                    : (academy.lessonMastery || {});
                 const updated = await saveAcademyProgress(ctx.from.id, {
                     ...academy,
                     session: null,
@@ -1448,6 +1595,7 @@ function setupHandlers(bot) {
                     lastPronunciation: pronunciation,
                     pronunciationScore: Math.round(score * 10),
                     speakingScore: Math.max(Number(academy.speakingScore || 0), Math.round(score * 10)),
+                    lessonMastery,
                     points: Number(academy.points || 0) + Math.round(score * 3)
                 });
                 await replyLongText(ctx, `🗣️ Pronunciation Report\n\nအမှတ်: ${score}/10\nအသံရှင်းလင်းမှု: ${pronunciation.clarity || 0}/10\n\n${(pronunciation.sounds || []).map((item) => `${item.word || 'Sound'}: ${item.issue || 'ဆက်လေ့ကျင့်ပါ'} — ${item.tip || ''}`).join('\n') || 'သီးခြားအသံထွက်အမှား မတွေ့ရပါ။'}\n\nStress အကြံပြုချက်: ${pronunciation.stressTip || 'အရေးကြီးသောစကားလုံးများကို ရှင်းရှင်းပြောပါ။'}\nပြန်လေ့ကျင့်ရန်: ${pronunciation.repeatTask || 'ဝါကျကို ဖြည်းဖြည်း သုံးကြိမ် ပြန်ပြောပါ။'}\n\nSpeaking points: ${updated.points}`);
@@ -1457,7 +1605,11 @@ function setupHandlers(bot) {
 
             if (sessionType === 'coach') {
                 const level = getLevel(academy.levelId);
-                const replyMessage = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildCoachVoicePrompt(level));
+                const replyMessage = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildCoachVoicePrompt(level, {
+                    weakSkills: weakSkills(academy),
+                    skillReport: skillReport(academy),
+                    currentLesson: academyLesson?.title || null
+                }));
                 await replyLongText(ctx, replyMessage);
                 await saveAcademyProgress(ctx.from.id, { ...academy, session: { type: 'coach' }, coachQuestions: Number(academy.coachQuestions || 0) + 1 });
                 await sendEnglishVoiceReply(ctx, replyMessage);
@@ -1479,8 +1631,17 @@ function setupHandlers(bot) {
                 const level = getLevel(academy.levelId);
                 const scorePrompt = `ဒီ ${level.title} (${level.cefr}) speaking assessment အသံကို နားထောင်ပြီး စစ်ဆေးပါ။ strength, priorities, task instructions နဲ့ feedback ကို မြန်မာလိုရေးပါ။ correctedExample ကိုတော့ English ဖြင့်ရေးပါ။ JSON သက်သက် ပြန်ပါ: {"overall":0,"grammar":0,"vocabulary":0,"fluency":0,"pronunciation":0,"taskCompletion":0,"strength":"...","priorities":["...","..."],"correctedExample":"...","nextTask":"..."}. အမျိုးအစားတိုင်းကို 0 မှ 10 အထိ အမှတ်ပေးပါ။`;
                 const raw = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', scorePrompt);
-                const assessment = parseJsonResponse(raw) || { overall: 0, strength: raw, priorities: ['Repeat the task with clearer sentences.'] };
-                const updated = await saveAcademyProgress(ctx.from.id, { ...academy, session: null, assessmentCount: Number(academy.assessmentCount || 0) + 1, lastAssessment: assessment, lastScore: assessment.overall, grammarScore: assessment.grammar != null ? Number(assessment.grammar) * 10 : academy.grammarScore, vocabularyScore: assessment.vocabulary != null ? Number(assessment.vocabulary) * 10 : academy.vocabularyScore, fluencyScore: assessment.fluency != null ? Number(assessment.fluency) * 10 : academy.fluencyScore, pronunciationScore: assessment.pronunciation != null ? Number(assessment.pronunciation) * 10 : academy.pronunciationScore, speakingScore: assessment.overall != null ? Number(assessment.overall) * 10 : academy.speakingScore, points: Number(academy.points || 0) + Number(assessment.overall || 0) * 10 });
+                const parsedAssessment = parseJsonResponse(raw) || { overall: 0, strength: raw, priorities: ['Repeat the task with clearer sentences.'] };
+                const assessment = normalizeAssessmentScores(parsedAssessment);
+                const assessmentLesson = academyLesson || getAcademyLesson('advanced-pro', 6);
+                const assessmentPosition = masteryPosition({ kind: 'academy', lesson: assessmentLesson });
+                const lessonMastery = recordLessonEvidence(academy.lessonMastery || {}, assessmentPosition.levelId, assessmentPosition.lessonNumber, {
+                    score: assessment.overall * 10,
+                    checkPassed: assessment.taskCompletion >= 7,
+                    mastered: assessment.overall >= 7 && assessment.taskCompletion >= 7,
+                    remediation: Array.isArray(assessment.priorities) ? assessment.priorities : weakSkills(academy)
+                });
+                const updated = await saveAcademyProgress(ctx.from.id, { ...academy, session: null, assessmentCount: Number(academy.assessmentCount || 0) + 1, lastAssessment: assessment, lastScore: assessment.overall, grammarScore: assessment.grammar != null ? Number(assessment.grammar) * 10 : academy.grammarScore, vocabularyScore: assessment.vocabulary != null ? Number(assessment.vocabulary) * 10 : academy.vocabularyScore, fluencyScore: assessment.fluency != null ? Number(assessment.fluency) * 10 : academy.fluencyScore, pronunciationScore: assessment.pronunciation != null ? Number(assessment.pronunciation) * 10 : academy.pronunciationScore, speakingScore: assessment.overall != null ? Number(assessment.overall) * 10 : academy.speakingScore, points: Number(academy.points || 0) + Number(assessment.overall || 0) * 10, lessonMastery });
                 await replyLongText(ctx, `📝 Speaking assessment ရလဒ်\n\nစုစုပေါင်း: ${assessment.overall || 0}/10\nGrammar: ${assessment.grammar || 0}/10\nVocabulary: ${assessment.vocabulary || 0}/10\nFluency: ${assessment.fluency || 0}/10\nPronunciation: ${assessment.pronunciation || 0}/10\n\nအားသာချက်: ${assessment.strength || 'ဆက်လက်လေ့ကျင့်ပါ။'}\nဦးစားပေးပြင်ရန်: ${(assessment.priorities || []).join('; ')}\nပြင်ဆင်ထားသော ဥပမာ: ${assessment.correctedExample || 'English ဝါကျတစ်ကြောင်း ထပ်ပြောကြည့်ပါ။'}\nနောက်လေ့ကျင့်ရန်: ${assessment.nextTask || 'အဖြေကို ဖြည်းဖြည်းနဲ့ ရှင်းရှင်းပြန်ပြောပါ။'}\n\nPoints: ${updated.points}`);
                 return;
             }

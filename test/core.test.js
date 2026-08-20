@@ -21,11 +21,11 @@ const {
 } = require('../src/database/firebase');
 const { BEGINNER_COURSE, getLesson } = require('../src/course/content');
 const { LEVELS, getLesson: getAcademyLesson, getNextLesson, levelIsPremium } = require('../src/academy/curriculum');
-const { seedWordBank, getDueWords, reviewWord, skillReport } = require('../src/academy/learning');
+const { seedWordBank, getDueWords, reviewWord, skillReport, recordLessonEvidence, getLessonMastery, lessonNeedsRemediation, canAdvanceLesson, weakSkills } = require('../src/academy/learning');
 const { TRACKS, getTrack, trackIsPremium } = require('../src/academy/tracks');
 const { normalizeClassCode, studentSummary } = require('../src/classroom/classroom');
-const { buildAcademyTextPrompt, buildCoachPrompt, buildDailyPlanPrompt, buildTeacherPhasePrompt } = require('../src/academy/teacher');
-const { createTeacherSession, advanceTeacherSession, normalizeHomework, completeHomework, scheduleReview } = require('../src/academy/session');
+const { buildAcademyTextPrompt, buildCoachPrompt, buildDailyPlanPrompt, buildTeacherPhasePrompt, buildRemediationPrompt } = require('../src/academy/teacher');
+const { createTeacherSession, advanceTeacherSession, normalizeHomework, completeHomework, scheduleReview, getDueReviews, completeReview } = require('../src/academy/session');
 
 test('splitMessage keeps Telegram chunks under the configured limit', () => {
     const chunks = splitMessage('a'.repeat(8000), 3900);
@@ -87,6 +87,7 @@ test('quiz normalization accepts four-option questions and rejects malformed que
     assert.equal(valid.options.length, 4);
     assert.equal(normalizeQuiz({ question: 'Broken', options: ['A'], answerIndex: 0 }), null);
     assert.equal(normalizeQuiz({ question: 'Broken', options: ['A', 'B', 'C', 'D'], answerIndex: 4 }), null);
+    assert.equal(normalizeQuiz({ question: 'Duplicate', options: ['A', 'A', 'B', 'C'], answerIndex: 0 }), null);
 });
 
 test('daily plan normalization creates measurable tasks and rejects invalid plans', () => {
@@ -114,6 +115,18 @@ test('spaced repetition seeds, schedules, and reports learner skills', () => {
     assert.equal(report.vocabulary, 80);
     assert.equal(report.speaking, 60);
     assert.ok(report.consistency > 0);
+});
+
+test('mastery evidence records attempts, weak skills, remediation, and advancement eligibility', () => {
+    let lessonMastery = {};
+    lessonMastery = recordLessonEvidence(lessonMastery, 'starter', 1, { score: 55, remediation: ['grammar', 'speaking'] });
+    assert.equal(getLessonMastery(lessonMastery, 'starter', 1).bestScore, 55);
+    assert.equal(lessonNeedsRemediation(lessonMastery, 'starter', 1), true);
+    assert.equal(canAdvanceLesson({ lessonMastery }, 'starter', 1), false);
+    lessonMastery = recordLessonEvidence(lessonMastery, 'starter', 1, { score: 82, checkPassed: true });
+    assert.equal(getLessonMastery(lessonMastery, 'starter', 1).mastered, true);
+    assert.equal(canAdvanceLesson({ lessonMastery }, 'starter', 1), true);
+    assert.deepEqual(weakSkills({ quizAnswered: 10, quizCorrect: 9, speakingScore: 40, grammarScore: 50 }), ['grammar', 'speaking', 'fluency', 'pronunciation']);
 });
 
 test('learning tracks expose free and Premium paths', () => {
@@ -185,7 +198,12 @@ test('teacher-led sessions progress through classroom phases and persist homewor
     assert.equal(guided.phase, 'guided');
     const homework = normalizeHomework([{ id: 'hw1', title: 'Speaking', instructions: 'English ဖြင့် ပြောပါ။' }]);
     assert.equal(completeHomework(homework, 'hw1')[0].completed, true);
-    assert.equal(scheduleReview([], { id: 'starter-1', title: 'Greetings' })[0].id, 'starter-1');
+    assert.equal(scheduleReview([], { id: 'starter-1', title: 'Greetings', dueDate: '2026-08-20' })[0].id, 'starter-1');
+    const queue = scheduleReview([{ id: 'other', title: 'Other', dueDate: '2026-08-19' }], { id: 'starter-1', title: 'Greetings', dueDate: '2026-08-20' });
+    assert.equal(queue.length, 2);
+    assert.equal(getDueReviews(queue, '2026-08-20')[0].id, 'other');
+    const completedQueue = completeReview(queue, 'other');
+    assert.equal(getDueReviews(completedQueue, '2026-08-20').some((item) => item.id === 'other'), false);
 });
 
 test('Burmese-first prompts preserve English practice content', () => {
@@ -196,6 +214,7 @@ test('Burmese-first prompts preserve English practice content', () => {
     assert.match(buildCoachPrompt(level, 'How can I practice?', { title: 'General English', description: 'Everyday English' }), /Burmese/);
     assert.match(buildDailyPlanPrompt(level, lesson, {}, '2026-08-20'), /Burmese/);
     assert.match(buildTeacherPhasePrompt(level, lesson, 'explain'), /teacher-led/);
+    assert.match(buildRemediationPrompt(level, lesson, ['speaking']), /Weak skills to target/);
 });
 
 test('reply keyboards are constructed with persistent Telegram layouts', () => {

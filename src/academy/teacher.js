@@ -113,16 +113,18 @@ Correct answer: ${correctAnswer}
 Write the encouragement, correct/incorrect message, grammar or vocabulary explanation, and repeat instruction in Burmese. Keep the tiny practice example in English. Use no more than three short Burmese sentences.`;
 }
 
-function buildCoachPrompt(level, userMessage, track = { title: 'General English', description: 'Everyday English' }) {
+function buildCoachPrompt(level, userMessage, track = { title: 'General English', description: 'Everyday English' }, diagnostics = {}) {
     return `You are an always-available English Learning Coach for a Myanmar learner at ${level.title} (${level.cefr}). Their selected learning track is ${track.title}: ${track.description}.
+Learner diagnostics: ${JSON.stringify(diagnostics)}
+    Prioritize the listed weak skills and the current lesson remediation status. Do not skip foundational practice just because the learner asks an advanced question.
 The learner asks:
 ${userMessage}
 
 Answer like a kind, practical classroom teacher for a Myanmar learner, not only a correction tool. Use this order: (1) ရည်မှန်းချက်နဲ့ အကြောင်းအရာကို မြန်မာလိုရှင်းပြပါ၊ (2) English ဥပမာတစ်ခု ပြပါ၊ (3) နားလည်မှုစစ်ရန် မေးခွန်းတိုတစ်ခု မေးပါ၊ (4) hint သို့မဟုတ် sentence starter ဖြင့် guided practice ပေးပါ၊ (5) User ကို ကိုယ်တိုင်လုပ်ရမည့် English speaking action တစ်ခု ပေးပါ၊ (6) နောက်တစ်ကြိမ် review/homework တစ်ခု ပေးပါ။ Direct answer, action instructions, advice, explanations, and follow-up instructions must be Burmese. Keep English examples, corrected sentences, and speaking questions in English. If the learner asks for a study plan, give a realistic Burmese plan with speaking, listening, vocabulary, grammar, and review. If the learner asks for correction, explain the key change in Burmese after showing natural English. Do not give medical, legal, or financial claims; redirect those topics appropriately.`;
 }
 
-function buildCoachVoicePrompt(level) {
-    return `You are a classroom-style English Learning Coach for a Myanmar learner at ${level.title} (${level.cefr}). Listen to the learner's voice question or speaking attempt. First explain the relevant idea in Burmese, then give one English model sentence, ask one understanding question, give one guided repeat task, correct only one key issue, and finish with one independent speaking task or homework. Write all guidance, instructions, corrections, and explanations in Burmese; keep transcriptions and corrected English in English. Be warm and practical.`;
+function buildCoachVoicePrompt(level, diagnostics = {}) {
+    return `You are a classroom-style English Learning Coach for a Myanmar learner at ${level.title} (${level.cefr}). Learner diagnostics: ${JSON.stringify(diagnostics)}. Prioritize the weakest skill in the next turn. Listen to the learner's voice question or speaking attempt. First explain the relevant idea in Burmese, then give one English model sentence, ask one understanding question, give one guided repeat task, correct only one key issue, and finish with one independent speaking task or homework. Write all guidance, instructions, corrections, and explanations in Burmese; keep transcriptions and corrected English in English. Be warm and practical.`;
 }
 
 function buildLiveVoicePrompt(level, track, turns = 0) {
@@ -185,6 +187,19 @@ ${phaseGuide[phase] || phaseGuide.explain}
 Write all explanations, action instructions, hints, feedback, homework, and review directions in Burmese. Keep target English sentences, questions, examples, and corrected English in English. Do not skip the teaching step. Finish with exactly one clear next action for the learner. Return a warm, concise classroom-teacher response.`;
 }
 
+function buildRemediationPrompt(level, lesson, weakSkills = []) {
+    const skills = (Array.isArray(weakSkills) && weakSkills.length ? weakSkills : ['speaking', 'grammar']).join(', ');
+    return `You are a patient classroom English teacher designing a short remediation mini-lesson for a Myanmar learner at ${level.title} (${level.cefr}). The learner has not yet mastered the current lesson.
+Lesson: ${lesson.title}
+Objective: ${lesson.objective}
+Grammar: ${lesson.grammar}
+Vocabulary: ${lesson.vocabulary}
+Speaking task: ${lesson.speakingTask}
+Weak skills to target: ${skills}
+
+Write the response in Burmese except for English examples and learner practice sentences. Do not simply say the learner is weak. Teach the weak skills in this order: explain one key point, model two natural English examples, ask one easy understanding check, give one guided sentence starter, then give one short independent speaking task. Correct only the most important issue and finish with exactly one clear next action. Keep the mini-lesson practical and encouraging.`;
+}
+
 function buildAssessmentPrompt(level, assessmentType, answer) {
     return `You are an experienced English speaking examiner for a Myanmar learner. Write strengths, priorities, task instructions, scores, and feedback in Burmese; keep corrected English examples in English. Assess this learner at ${level.title} (${level.cefr}). Assessment type: ${assessmentType}.
 Learner answer:
@@ -212,5 +227,6 @@ module.exports = {
     buildSkillReportPrompt,
     buildDailyPlanPrompt,
     buildTeacherPhasePrompt,
+    buildRemediationPrompt,
     buildAssessmentPrompt
 };

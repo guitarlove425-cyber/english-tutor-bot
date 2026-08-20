@@ -74,6 +74,65 @@ function clampScore(value, fallback = 0) {
     return Math.max(0, Math.min(100, Math.round(number)));
 }
 
+const MASTERY_THRESHOLD = 70;
+const MASTERY_SKILLS = Object.freeze(['grammar', 'vocabulary', 'speaking', 'fluency', 'pronunciation']);
+
+function normalizeLessonMastery(value = {}) {
+    const source = value && typeof value === 'object' ? value : {};
+    return {
+        attempts: Math.max(0, Number(source.attempts || 0)),
+        checksPassed: Math.max(0, Number(source.checksPassed || 0)),
+        bestScore: clampScore(source.bestScore, 0),
+        lastScore: clampScore(source.lastScore, 0),
+        lastAttempt: source.lastAttempt || null,
+        mastered: Boolean(source.mastered),
+        remediation: Array.isArray(source.remediation) ? source.remediation.slice(-5) : []
+    };
+}
+
+function lessonMasteryKey(levelId, lessonNumber) {
+    return `${levelId}-${lessonNumber}`;
+}
+
+function recordLessonEvidence(lessonMastery = {}, levelId, lessonNumber, evidence = {}) {
+    const key = lessonMasteryKey(levelId, lessonNumber);
+    const current = normalizeLessonMastery(lessonMastery[key]);
+    const score = clampScore(evidence.score, current.lastScore);
+    const remediation = Array.isArray(evidence.remediation) ? evidence.remediation.map(String).slice(-5) : current.remediation;
+    const next = {
+        ...current,
+        attempts: current.attempts + 1,
+        checksPassed: current.checksPassed + (evidence.checkPassed ? 1 : 0),
+        bestScore: Math.max(current.bestScore, score),
+        lastScore: score,
+        lastAttempt: evidence.attemptedAt || new Date().toISOString(),
+        remediation,
+        mastered: current.mastered || Boolean(evidence.mastered) || (Math.max(current.bestScore, score) >= MASTERY_THRESHOLD && (current.checksPassed + (evidence.checkPassed ? 1 : 0)) >= 1)
+    };
+    return { ...lessonMastery, [key]: next };
+}
+
+function getLessonMastery(lessonMastery = {}, levelId, lessonNumber) {
+    return normalizeLessonMastery((lessonMastery || {})[lessonMasteryKey(levelId, lessonNumber)]);
+}
+
+function lessonNeedsRemediation(lessonMastery = {}, levelId, lessonNumber) {
+    const record = getLessonMastery(lessonMastery, levelId, lessonNumber);
+    return record.attempts > 0 && !record.mastered;
+}
+
+function canAdvanceLesson(progress = {}, levelId, lessonNumber) {
+    const record = getLessonMastery(progress.lessonMastery, levelId, lessonNumber);
+    const session = progress.teacherSession || {};
+    const hasTeacherEvidence = Number(session.attempts || 0) > 0 || Number(record.attempts || 0) > 0;
+    return record.mastered || (hasTeacherEvidence && record.bestScore >= MASTERY_THRESHOLD) || (session.phase === 'homework' && Number(session.attempts || 0) >= 2);
+}
+
+function weakSkills(progress = {}) {
+    const report = skillReport(progress);
+    return MASTERY_SKILLS.filter((skill) => report[skill] < MASTERY_THRESHOLD);
+}
+
 function skillReport(progress = {}) {
     const quizAnswered = Number(progress.quizAnswered || 0);
     const quizCorrect = Number(progress.quizCorrect || 0);
@@ -99,7 +158,16 @@ module.exports = {
     getDueWords,
     reviewWord,
     mergeReviewedWord,
-    skillReport
+    skillReport,
+    MASTERY_THRESHOLD,
+    MASTERY_SKILLS,
+    normalizeLessonMastery,
+    lessonMasteryKey,
+    recordLessonEvidence,
+    getLessonMastery,
+    lessonNeedsRemediation,
+    canAdvanceLesson,
+    weakSkills
 };
 
 // Pure helper module: no network access and safe to use in tests.
