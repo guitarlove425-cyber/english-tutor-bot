@@ -96,6 +96,35 @@ Scenario/topic: ${lesson.title}. Objective: ${lesson.objective}. Grammar: ${less
 Listen to the learner. Reply in character for one turn, then give a short Burmese teacher note with one corrected sentence and one pronunciation tip. Ask the next in-character question. Do not end the role-play.`;
 }
 
+function buildQuizQuestionPrompt(level, lesson, previousQuestions = []) {
+    return `You are a premium English teacher creating a fresh quiz question for ${level.title} (${level.cefr}), Lesson ${lesson.number}: ${lesson.title}.
+Grammar focus: ${lesson.grammar}
+Vocabulary focus: ${lesson.vocabulary}
+Create one useful question that checks meaning or real communication, not a trick.
+Return JSON only with this shape: {"question":"...","options":["...","...","...","..."],"answerIndex":0,"explanation":"..."}.
+There must be exactly four short options and answerIndex must be 0, 1, 2, or 3. Use a different question from these previous questions: ${JSON.stringify(previousQuestions.slice(-5))}. Keep it suitable for the learner's level.`;
+}
+
+function buildQuizFeedbackPrompt(level, lesson, question, selectedAnswer, correctAnswer) {
+    return `You are a patient English teacher. The learner answered a quiz question for ${level.title} (${level.cefr}), Lesson ${lesson.number}: ${lesson.title}.
+Question: ${question}
+Learner answer: ${selectedAnswer}
+Correct answer: ${correctAnswer}
+Give one short encouraging sentence, say whether it is correct, and explain the grammar or vocabulary in Burmese in no more than three sentences. Then give one tiny example for the learner to repeat.`;
+}
+
+function buildCoachPrompt(level, userMessage) {
+    return `You are an always-available English Learning Coach for a Myanmar learner at ${level.title} (${level.cefr}).
+The learner asks:
+${userMessage}
+
+Answer like a kind, practical private teacher. First answer the learner's question directly. Then provide one short English example, one Burmese explanation when useful, and one small speaking action they can do today. If the learner asks for a study plan, give a realistic plan with speaking, listening, vocabulary, grammar, and review. If the learner asks for correction, show natural English and explain the key change. Keep the conversation open with one useful follow-up question. Do not give medical, legal, or financial claims; redirect those topics appropriately.`;
+}
+
+function buildCoachVoicePrompt(level) {
+    return `You are an English Learning Coach for a Myanmar learner at ${level.title} (${level.cefr}). Listen to the learner's voice question or speaking attempt. Reply directly, transcribe the important sentence, correct one key issue, explain it briefly in Burmese, give one pronunciation or fluency tip, and ask one helpful follow-up question. Be warm and practical.`;
+}
+
 function buildAssessmentPrompt(level, assessmentType, answer) {
     return `You are an experienced English speaking examiner. Assess this learner at ${level.title} (${level.cefr}). Assessment type: ${assessmentType}.
 Learner answer:
@@ -113,5 +142,9 @@ module.exports = {
     buildPlacementVoicePrompt,
     buildRoleplayPrompt,
     buildRoleplayVoicePrompt,
+    buildQuizQuestionPrompt,
+    buildQuizFeedbackPrompt,
+    buildCoachPrompt,
+    buildCoachVoicePrompt,
     buildAssessmentPrompt
 };

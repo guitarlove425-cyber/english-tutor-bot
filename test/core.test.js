@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, academyKeyboard, modeReplyKeyboard, BUTTONS } = require('../src/bot/handlers');
+const { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, academyKeyboard, modeReplyKeyboard, BUTTONS, normalizeQuiz } = require('../src/bot/handlers');
 const {
     checkUsageLimit,
     makeUserPremium,
@@ -69,6 +69,14 @@ test('course progress starts, advances, and resets in memory fallback', async ()
     assert.equal((await getCourseProgress(userId)).currentLesson, 1);
 });
 
+test('quiz normalization accepts four-option questions and rejects malformed questions', () => {
+    const valid = normalizeQuiz({ question: 'Choose the correct sentence.', options: ['I am student.', 'I am a student.', 'I student.', 'I is student.'], answerIndex: 1, explanation: 'Use a before a singular job or identity noun.' });
+    assert.equal(valid.answerIndex, 1);
+    assert.equal(valid.options.length, 4);
+    assert.equal(normalizeQuiz({ question: 'Broken', options: ['A'], answerIndex: 0 }), null);
+    assert.equal(normalizeQuiz({ question: 'Broken', options: ['A', 'B', 'C', 'D'], answerIndex: 4 }), null);
+});
+
 test('academy curriculum covers Starter through Advanced/Pro with Premium gating', () => {
     assert.equal(LEVELS.length, 6);
     assert.deepEqual(LEVELS.map((level) => level.cefr), ['A0', 'A1', 'A2', 'B1', 'B2', 'C1+']);
@@ -122,7 +130,7 @@ test('Academy Telegram handlers register all public flows', () => {
         telegram: { sendMessage: async () => {} }
     };
     setupHandlers(fakeBot);
-    for (const command of ['academy', 'levels', 'academylesson', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
+    for (const command of ['academy', 'levels', 'academylesson', 'academyquiz', 'coach', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
         assert.ok(registered.commands.includes(command), `missing /${command}`);
     }
     assert.ok(registered.events.includes('text'));
@@ -133,4 +141,6 @@ test('Academy Telegram handlers register all public flows', () => {
     assert.ok(registered.hears.includes(BUTTONS.mode.normal));
     assert.ok(registered.hears.includes(BUTTONS.mode.ielts));
     assert.ok(registered.hears.includes(BUTTONS.mode.translator));
+    assert.ok(registered.hears.includes(BUTTONS.academy.quiz));
+    assert.ok(registered.hears.includes(BUTTONS.academy.coach));
 });

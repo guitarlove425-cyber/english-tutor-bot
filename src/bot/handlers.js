@@ -29,6 +29,10 @@ const {
     buildPlacementVoicePrompt,
     buildRoleplayPrompt,
     buildRoleplayVoicePrompt,
+    buildQuizQuestionPrompt,
+    buildQuizFeedbackPrompt,
+    buildCoachPrompt,
+    buildCoachVoicePrompt,
     buildAssessmentPrompt
 } = require('../academy/teacher');
 
@@ -115,7 +119,7 @@ function academyProgressMessage(progress) {
     const lesson = getAcademyLesson(progress.levelId, progress.lessonNumber);
     const percent = Math.round((completed / total) * 100);
     const premiumLabel = level.premium ? 'Premium' : 'Free';
-    return `🏫 English Speaking Academy\n\nLevel: ${level.title} (${level.cefr}) — ${premiumLabel}\nCurrent lesson: ${lesson ? `${lesson.number}. ${lesson.title}` : 'Completed'}\nCompleted: ${completed}/${total} lessons (${percent}%)\nPoints: ${progress.points || 0}\nPractice attempts: ${progress.practiceAttempts || 0}\nSpeaking attempts: ${progress.speakingAttempts || 0}\nStreak: ${progress.streak || 0} day(s)\n\nUse /academylesson to repeat the lesson, /academyreview to review, /academyassessment for a checkpoint, and /academyreset to start again.`;
+    return `🏫 English Speaking Academy\n\nLevel: ${level.title} (${level.cefr}) — ${premiumLabel}\nCurrent lesson: ${lesson ? `${lesson.number}. ${lesson.title}` : 'Completed'}\nCompleted: ${completed}/${total} lessons (${percent}%)\nPoints: ${progress.points || 0}\nPractice attempts: ${progress.practiceAttempts || 0}\nSpeaking attempts: ${progress.speakingAttempts || 0}\nQuiz score: ${progress.quizCorrect || 0}/${progress.quizAnswered || 0}\nQuiz streak: ${progress.quizStreak || 0}\nCoach questions: ${progress.coachQuestions || 0}\nStreak: ${progress.streak || 0} day(s)\n\nUse /academylesson to repeat, /academyquiz for a fresh question, /coach to ask for advice, /academyreview to review, /academyassessment for a checkpoint, and /academyreset to start again.`;
 }
 
 async function hasAcademyAccess(ctx, levelId) {
@@ -152,6 +156,76 @@ function parseJsonResponse(text) {
     }
 }
 
+function normalizeQuiz(data) {
+    if (!data || typeof data.question !== 'string' || !Array.isArray(data.options) || data.options.length !== 4) return null;
+    const answerIndex = Number(data.answerIndex);
+    if (!Number.isInteger(answerIndex) || answerIndex < 0 || answerIndex > 3) return null;
+    return {
+        question: data.question.trim(),
+        options: data.options.map((option) => String(option).trim()),
+        answerIndex,
+        explanation: String(data.explanation || '')
+    };
+}
+
+function quizKeyboard(quiz) {
+    return Markup.inlineKeyboard(quiz.options.map((option, index) => [Markup.button.callback(`${String.fromCharCode(65 + index)}. ${option}`, `quiz_answer_${index}`)]));
+}
+
+function quizNextKeyboard() {
+    return Markup.inlineKeyboard([
+        [Markup.button.callback('🧠 မေးခွန်းအသစ်', 'quiz_new')],
+        [Markup.button.callback('🏠 ပင်မ Menu', 'quiz_home')]
+    ]);
+}
+
+async function sendNewQuiz(ctx) {
+    const status = await usageOrReply(ctx);
+    if (!status) return;
+    const progress = await getAcademyProgress(ctx.from.id);
+    const lesson = getAcademyLesson(progress.levelId, progress.lessonNumber);
+    const level = getLevel(progress.levelId);
+    if (!progress.active || !lesson) return ctx.reply('Send /academy to begin your Academy before starting a quiz.');
+    if (!(await hasAcademyAccess(ctx, level.id))) return;
+    const previousQuestions = (progress.quizHistory || []).map((item) => item.question || item);
+    const raw = await getTutorResponse(buildQuizQuestionPrompt(level, lesson, previousQuestions), 'default');
+    const quiz = normalizeQuiz(parseJsonResponse(raw));
+    if (!quiz) return replyLongText(ctx, raw);
+    const history = [...(progress.quizHistory || []), { question: quiz.question, lessonId: lesson.id }].slice(-20);
+    await saveAcademyProgress(ctx.from.id, {
+        ...progress,
+        session: { type: 'quiz', question: quiz },
+        lastQuiz: quiz,
+        quizHistory: history
+    });
+    await ctx.reply(`🧠 ${level.title} Quiz — ${lesson.title}\n\n${quiz.question}\n\nChoose the best answer:`, quizKeyboard(quiz));
+}
+
+async function answerQuiz(ctx, selectedIndex) {
+    const status = await usageOrReply(ctx);
+    if (!status) return;
+    const progress = await getAcademyProgress(ctx.from.id);
+    const quiz = progress.session?.type === 'quiz' ? progress.session.question : null;
+    if (!quiz) return ctx.reply('Start a new quiz with /academyquiz.');
+    const lesson = getAcademyLesson(progress.levelId, progress.lessonNumber);
+    const level = getLevel(progress.levelId);
+    const index = Number(selectedIndex);
+    const selectedAnswer = quiz.options[index] || 'Unknown answer';
+    const correctAnswer = quiz.options[quiz.answerIndex];
+    const correct = index === Number(quiz.answerIndex);
+    const feedback = await getTutorResponse(buildQuizFeedbackPrompt(level, lesson, quiz.question, selectedAnswer, correctAnswer), 'default');
+    const updated = await saveAcademyProgress(ctx.from.id, {
+        ...progress,
+        session: null,
+        quizAnswered: Number(progress.quizAnswered || 0) + 1,
+        quizCorrect: Number(progress.quizCorrect || 0) + (correct ? 1 : 0),
+        quizStreak: correct ? Number(progress.quizStreak || 0) + 1 : 0,
+        points: Number(progress.points || 0) + (correct ? 20 : 5),
+        lastQuiz: { ...quiz, selectedIndex: index, correct }
+    });
+    await ctx.reply(`${correct ? '✅ Correct!' : `❌ Not quite. Correct answer: ${correctAnswer}`}\n\n${feedback}\n\nQuiz score: ${updated.quizCorrect}/${updated.quizAnswered}\nPoints: ${updated.points}`, quizNextKeyboard());
+}
+
 const BUTTONS = {
     main: {
         academy: '🏫 Speaking Academy',
@@ -173,6 +247,8 @@ const BUTTONS = {
         progress: '📊 Academy Progress',
         review: '🔁 Review',
         roleplay: '🎭 Role-play',
+        quiz: '🧠 Lesson Quiz',
+        coach: '💬 Learning Coach',
         assessment: '📝 Assessment',
         certificate: '🏆 Certificate',
         home: '🏠 ပင်မ Menu'
@@ -192,7 +268,8 @@ function academyKeyboard() {
     return Markup.keyboard([
         [BUTTONS.academy.lesson, BUTTONS.academy.next],
         [BUTTONS.academy.progress, BUTTONS.academy.review],
-        [BUTTONS.academy.roleplay, BUTTONS.academy.assessment],
+        [BUTTONS.academy.roleplay, BUTTONS.academy.quiz],
+        [BUTTONS.academy.coach, BUTTONS.academy.assessment],
         [BUTTONS.academy.certificate, BUTTONS.academy.home]
     ]).resize().persistent();
 }
@@ -240,6 +317,8 @@ function setupButtonRouting(bot) {
         [BUTTONS.academy.progress, '/academyprogress'],
         [BUTTONS.academy.review, '/academyreview'],
         [BUTTONS.academy.roleplay, '/academyroleplay'],
+        [BUTTONS.academy.quiz, '/academyquiz'],
+        [BUTTONS.academy.coach, '/coach'],
         [BUTTONS.academy.assessment, '/academyassessment'],
         [BUTTONS.academy.certificate, '/academycertificate'],
         [BUTTONS.academy.home, '/menu']
@@ -255,7 +334,7 @@ function setupHandlers(bot) {
         await ctx.reply(`Hello ${ctx.from.first_name || 'there'}!\n\nI am LinguistPro, your AI English Tutor.\n\nCurrent mode: ${mode}\n\nFor a complete step-by-step journey from beginner to Pro, send /academy. For the original beginner lessons, send /course.\nUse the quick buttons below or /help for all commands.`, mainKeyboard());
     });
 
-    bot.help((ctx) => ctx.reply('Commands:\n/start - Start the tutor\n/help - Show help\n/academy - Start or resume the full Speaking Academy\n/levels - View Free and Premium levels\n/academylesson - Show the current Academy lesson\n/nextacademylesson - Complete the current Academy lesson\n/academyprogress - View level, points, streak, and progress\n/academyreview - Review a completed lesson\n/academyassessment - Take a checkpoint assessment\n/academyroleplay - Start a realistic role-play\n/academycertificate - View Pro completion status\n/academyreset - Reset Academy progress\n/course - Open the original 12-lesson beginner course\n/mode - Choose Normal, IELTS, or Translator mode\n/myid - Show your Telegram ID\n/upgrade USER_ID DAYS - Admin only\n\nUse the quick buttons below. In Academy practice, send text or voice and I will teach, correct, and coach you like a personal teacher.', mainKeyboard()));
+    bot.help((ctx) => ctx.reply('Commands:\n/start - Start the tutor\n/help - Show help\n/academy - Start or resume the full Speaking Academy\n/levels - View Free and Premium levels\n/academylesson - Show the current Academy lesson\n/academyquiz - Get a fresh lesson quiz question\n/coach - Ask the English Learning Coach anything\n/nextacademylesson - Complete the current Academy lesson\n/academyprogress - View level, points, streak, and progress\n/academyreview - Review a completed lesson\n/academyassessment - Take a checkpoint assessment\n/academyroleplay - Start a realistic role-play\n/academycertificate - View Pro completion status\n/academyreset - Reset Academy progress\n/course - Open the original 12-lesson beginner course\n/mode - Choose Normal, IELTS, or Translator mode\n/myid - Show your Telegram ID\n/upgrade USER_ID DAYS - Admin only\n\nUse the quick buttons below. In Academy practice, send text or voice and I will teach, correct, quiz, and coach you like a personal teacher.', mainKeyboard()));
 
     bot.command('menu', (ctx) => ctx.reply('🏠 Main menu', mainKeyboard()));
 
@@ -305,6 +384,28 @@ function setupHandlers(bot) {
         } catch (error) {
             console.error('Academy lesson error:', error.message);
             await ctx.reply('🙏 I could not load your Academy lesson right now.');
+        }
+    });
+
+    bot.command('academyquiz', async (ctx) => {
+        try {
+            await sendNewQuiz(ctx);
+        } catch (error) {
+            console.error('Academy quiz error:', error.message);
+            await ctx.reply('🙏 I could not create a quiz question right now. Please try again.');
+        }
+    });
+
+    bot.command('coach', async (ctx) => {
+        try {
+            const progress = await getAcademyProgress(ctx.from.id);
+            if (!progress.active) return ctx.reply('Send /academy first so I can teach at the right level.');
+            await saveAcademyProgress(ctx.from.id, { ...progress, session: { type: 'coach' } });
+            const level = getLevel(progress.levelId);
+            await ctx.reply(`💬 English Learning Coach is ready.\n\nYour current level: ${level.title} (${level.cefr})\n\nAsk me anything about English speaking, grammar, vocabulary, pronunciation, study plans, or your learning problems. You can type or send a voice message.`, academyKeyboard());
+        } catch (error) {
+            console.error('Coach start error:', error.message);
+            await ctx.reply('🙏 I could not open the Learning Coach right now.');
         }
     });
 
@@ -399,6 +500,31 @@ function setupHandlers(bot) {
             console.error('Next Academy lesson error:', error.message);
             await ctx.reply('🙏 I could not move to the next Academy lesson right now.');
         }
+    });
+
+    bot.action(/^quiz_answer_([0-3])$/, async (ctx) => {
+        try {
+            await ctx.answerCbQuery();
+            await answerQuiz(ctx, Number(ctx.match[1]));
+        } catch (error) {
+            console.error('Quiz answer error:', error.message);
+            await ctx.reply('🙏 I could not check that answer right now. Please try again.');
+        }
+    });
+
+    bot.action('quiz_new', async (ctx) => {
+        try {
+            await ctx.answerCbQuery();
+            await sendNewQuiz(ctx);
+        } catch (error) {
+            console.error('New quiz error:', error.message);
+            await ctx.reply('🙏 I could not create a new question right now.');
+        }
+    });
+
+    bot.action('quiz_home', async (ctx) => {
+        await ctx.answerCbQuery();
+        await ctx.reply('🏠 Main menu', mainKeyboard());
     });
 
     bot.command('academyreset', async (ctx) => {
@@ -542,6 +668,15 @@ function setupHandlers(bot) {
                 return;
             }
 
+            if (sessionType === 'coach') {
+                const level = getLevel(academy.levelId);
+                const replyMessage = await getTutorResponse(buildCoachPrompt(level, userMessage), 'default');
+                await replyLongText(ctx, replyMessage);
+                await saveAcademyProgress(ctx.from.id, { ...academy, session: { type: 'coach' }, coachQuestions: Number(academy.coachQuestions || 0) + 1 });
+                await sendEnglishVoiceReply(ctx, replyMessage);
+                return;
+            }
+
             if (sessionType === 'roleplay' && academyLesson) {
                 if (!(await hasAcademyAccess(ctx, academy.levelId))) return;
                 const level = getLevel(academy.levelId);
@@ -632,6 +767,15 @@ function setupHandlers(bot) {
                 return;
             }
 
+            if (sessionType === 'coach') {
+                const level = getLevel(academy.levelId);
+                const replyMessage = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildCoachVoicePrompt(level));
+                await replyLongText(ctx, replyMessage);
+                await saveAcademyProgress(ctx.from.id, { ...academy, session: { type: 'coach' }, coachQuestions: Number(academy.coachQuestions || 0) + 1 });
+                await sendEnglishVoiceReply(ctx, replyMessage);
+                return;
+            }
+
             if (sessionType === 'roleplay' && academyLesson) {
                 if (!(await hasAcademyAccess(ctx, academy.levelId))) return;
                 const level = getLevel(academy.levelId);
@@ -718,4 +862,4 @@ function setupHandlers(bot) {
     });
 }
 
-module.exports = { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, academyKeyboard, modeReplyKeyboard, BUTTONS };
+module.exports = { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, academyKeyboard, modeReplyKeyboard, BUTTONS, normalizeQuiz, quizKeyboard, quizNextKeyboard };

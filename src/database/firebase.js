@@ -216,6 +216,12 @@ function defaultAcademyProgress() {
         lastScore: null,
         placement: null,
         lastAssessment: null,
+        quizAnswered: 0,
+        quizCorrect: 0,
+        quizStreak: 0,
+        quizHistory: [],
+        lastQuiz: null,
+        coachQuestions: 0,
         startedAt: null,
         updatedAt: null
     };
