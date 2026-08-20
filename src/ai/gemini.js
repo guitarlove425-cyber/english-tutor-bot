@@ -45,15 +45,15 @@ async function getTutorResponse(userMessage, mode = 'default') {
     }
 }
 
-async function getTutorResponseFromAudio(audioBuffer, mimeType = 'audio/ogg', mode = 'default') {
+async function getTutorResponseFromAudio(audioBuffer, mimeType = 'audio/ogg', mode = 'default', customPrompt = '') {
     if (!audioBuffer || !audioBuffer.length) throw new Error('EMPTY_AUDIO');
     try {
         const model = getModel(mode);
-        const prompt = mode === 'ielts'
+        const prompt = customPrompt || (mode === 'ielts'
             ? 'Listen to the student’s IELTS answer. Evaluate pronunciation, grammar, vocabulary, and fluency, give a brief estimated band score, and ask the next question.'
             : mode === 'translator'
                 ? 'Transcribe and translate this English voice message into Burmese. Output only the Burmese translation.'
-                : 'Listen to this voice message. Gently correct pronunciation or grammar mistakes in Burmese, then reply in English to continue the conversation.';
+                : 'Listen to this voice message. Gently correct pronunciation or grammar mistakes in Burmese, then reply in English to continue the conversation.');
         const result = await model.generateContent([
             prompt,
             { inlineData: { data: audioBuffer.toString('base64'), mimeType } }

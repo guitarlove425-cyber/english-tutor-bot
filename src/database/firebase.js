@@ -134,4 +134,81 @@ function isFirebaseEnabled() {
     return firebaseEnabled;
 }
 
-module.exports = { checkUsageLimit, makeUserPremium, getUserMode, setUserMode, isFirebaseEnabled, ADMIN_ID };
+function defaultCourseProgress() {
+    return {
+        active: false,
+        currentLesson: 1,
+        completedLessons: [],
+        practiceAttempts: 0,
+        speakingAttempts: 0,
+        lastScore: null,
+        startedAt: null,
+        updatedAt: null
+    };
+}
+
+async function getCourseProgress(userId) {
+    const userKey = String(userId);
+    if (firebaseEnabled) {
+        const snapshot = await db.collection('course_progress').doc(userKey).get();
+        return { ...defaultCourseProgress(), ...(snapshot.exists ? snapshot.data() : {}) };
+    }
+    return { ...defaultCourseProgress(), ...(getMemoryUser(userKey).courseProgress || {}) };
+}
+
+async function saveCourseProgress(userId, progress) {
+    const userKey = String(userId);
+    const data = {
+        ...defaultCourseProgress(),
+        ...progress,
+        updatedAt: new Date().toISOString()
+    };
+    if (firebaseEnabled) {
+        await db.collection('course_progress').doc(userKey).set(data, { merge: true });
+    } else {
+        memoryUsers.set(userKey, { ...getMemoryUser(userKey), courseProgress: data });
+    }
+    return data;
+}
+
+async function startCourse(userId) {
+    const existing = await getCourseProgress(userId);
+    return saveCourseProgress(userId, {
+        ...existing,
+        active: true,
+        currentLesson: existing.currentLesson || 1,
+        startedAt: existing.startedAt || new Date().toISOString()
+    });
+}
+
+async function completeCourseLesson(userId, lessonId, score = null) {
+    const progress = await getCourseProgress(userId);
+    const completedLessons = [...new Set([...(progress.completedLessons || []), Number(lessonId)])].sort((a, b) => a - b);
+    const nextLesson = Math.min(Math.max(progress.currentLesson, Number(lessonId) + 1), 12);
+    return saveCourseProgress(userId, {
+        ...progress,
+        active: true,
+        currentLesson: nextLesson,
+        completedLessons,
+        practiceAttempts: Number(progress.practiceAttempts || 0) + 1,
+        lastScore: score
+    });
+}
+
+async function resetCourse(userId) {
+    return saveCourseProgress(userId, { ...defaultCourseProgress(), updatedAt: new Date().toISOString() });
+}
+
+module.exports = {
+    checkUsageLimit,
+    makeUserPremium,
+    getUserMode,
+    setUserMode,
+    getCourseProgress,
+    saveCourseProgress,
+    startCourse,
+    completeCourseLesson,
+    resetCourse,
+    isFirebaseEnabled,
+    ADMIN_ID
+};

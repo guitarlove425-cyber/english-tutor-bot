@@ -1,10 +1,14 @@
 # English Tutor Bot
 
-A Telegram AI English tutor for Myanmar learners. It uses Google Gemini for text and voice conversations, offers Normal Tutor and IELTS Examiner modes, translates English text and subtitle files into Burmese, and supports a daily free limit with optional Premium accounts.
+A Telegram AI English tutor for Myanmar learners. It uses Google Gemini for text and voice conversations, offers a teacher-led Beginner Speaking Course and IELTS Examiner mode, translates English text and subtitle files into Burmese, and supports a daily free limit with optional Premium accounts.
 
 ## Features
 
-The bot supports `/start`, `/help`, `/mode`, `/myid`, and the admin-only `/upgrade USER_ID DAYS` commands. Users can send text or Telegram voice messages. In Translator mode, users can also upload `.srt`, `.vtt`, or `.txt` files; subtitle timestamps and block formatting are preserved by the translation prompt. Normal Tutor and IELTS modes can return both text and English voice replies.
+The bot supports `/start`, `/help`, `/mode`, `/course`, `/lesson`, `/nextlesson`, `/progress`, `/resetcourse`, `/myid`, and the admin-only `/upgrade USER_ID DAYS` commands. Users can send text or Telegram voice messages. In Translator mode, users can also upload `.srt`, `.vtt`, or `.txt` files; subtitle timestamps and block formatting are preserved by the translation prompt. Normal Tutor and IELTS modes can return both text and English voice replies.
+
+### Beginner Speaking Course
+
+The `/course` command starts or resumes a 12-lesson path from greetings and introductions through daily routines, questions, shopping, directions, and a final real-life conversation. Each lesson contains a clear goal, short explanation, examples, a practice challenge, and a model answer. Learners can reply with text or voice; Gemini gives encouragement, corrected English, a simple Burmese explanation, a pronunciation tip, and one sentence to repeat. The learner controls progression by sending `/nextlesson` after practicing. `/progress` shows completed lessons and practice attempts, while `/lesson` repeats the current lesson and `/resetcourse` starts the path again from Lesson 1.
 
 User modes, Premium status, and daily usage are stored in Firestore when Firebase credentials are configured. If Firebase credentials are absent, the bot starts with an in-memory fallback so it remains usable for local testing, but usage and Premium data will be lost when the process restarts.
 
@@ -75,6 +79,7 @@ The bot uses the following collections:
 |---|---|
 | `users` | Premium status, Premium expiry, and the user's selected mode |
 | `user_daily_usage` | Per-user UTC date and request count for the free limit |
+| `course_progress` | Current lesson, completed lessons, practice attempts, and speaking attempts |
 
 Usage increments use a Firestore transaction, preventing simultaneous requests from bypassing the daily limit.
 
@@ -87,7 +92,9 @@ Keep `.env`, Firebase service-account JSON, and API keys outside version control
 ```text
 index.js                  Application entrypoint and health endpoint
 src/config.js             Environment configuration and validation
-src/bot/handlers.js       Telegram commands, text, voice, and document handlers
+src/bot/handlers.js       Telegram commands, course, text, voice, and document handlers
+src/course/content.js     12-lesson beginner speaking syllabus
+src/course/teacher.js     Teacher-style lesson and practice prompts
 src/ai/gemini.js          Gemini personas and text/audio generation
 src/database/firebase.js  Firestore persistence and in-memory local fallback
 check.js                  Gemini model availability checker
