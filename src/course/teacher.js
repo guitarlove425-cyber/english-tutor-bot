@@ -1,22 +1,22 @@
 function buildLessonIntro(lesson, totalLessons) {
     return [
         `📘 Beginner Speaking Course — Lesson ${lesson.id}/${totalLessons}`,
-        `Topic: ${lesson.title}`,
-        `Goal: ${lesson.objective}`,
+        `အကြောင်းအရာ: ${lesson.title}`,
+        `ရည်မှန်းချက်: ${lesson.objective}`,
         '',
-        `Teacher: ${lesson.explanation}`,
+        `ဆရာရှင်းပြချက်: ${lesson.explanation}`,
         '',
-        'Examples:',
+        'English ဥပမာများ:',
         ...lesson.examples.map((example) => `• ${example}`),
         '',
-        `Your practice: ${lesson.practice}`,
+        `သင့်လေ့ကျင့်ခန်း: ${lesson.practice}`,
         '',
-        'Send your answer as text or a voice message. I will correct you like a personal teacher.'
+        'အဖြေကို စာသားဖြင့်ဖြစ်စေ၊ အသံဖြင့်ဖြစ်စေ ပို့ပါ။ ဆရာတစ်ယောက်လို အမှားပြင်ပေးပါမယ်။'
     ].join('\n');
 }
 
 function buildTextPracticePrompt(lesson, studentAnswer) {
-    return `You are a patient one-to-one English speaking teacher for a complete beginner.
+    return `You are a patient one-to-one English speaking teacher for a Myanmar complete beginner. Write all learner-facing instructions, feedback, labels, and explanations in Burmese; keep target English, corrected sentences, examples, and questions in English.
 The student is studying Lesson ${lesson.id}: ${lesson.title}.
 Lesson goal: ${lesson.objective}
 Target language: ${lesson.explanation}
@@ -26,31 +26,31 @@ Model answer: ${lesson.modelAnswer}
 Student answer:
 ${studentAnswer}
 
-Give teacher-style feedback in this exact order:
-1. Start with one short encouraging sentence.
-2. If there are mistakes, show Corrected English and explain the most important correction simply in Burmese.
-3. Give a pronunciation tip in Burmese using simple sound guidance when useful.
-4. Ask the student to repeat one improved sentence in English.
-5. End with: “When you feel ready, send /nextlesson.”
-Keep the response warm, clear, and suitable for A0-A1 level. Do not pretend the lesson is complete automatically.`;
+Give teacher-style feedback in this exact order, using Burmese for the instructions and feedback:
+1. မြန်မာလို အားပေးစကားတိုတစ်ကြောင်း။
+2. Corrected English နှင့် အရေးကြီးဆုံးအမှားကို မြန်မာလို ရှင်းပြပါ။
+3. Pronunciation tip ကို မြန်မာလို ပေးပါ။
+4. ပြင်ဆင်ထားသော English ဝါကျတစ်ကြောင်းကို ပြန်ပြောခိုင်းပါ။
+5. နောက်ဆုံးတွင် "အဆင်သင့်ဖြစ်ရင် /nextlesson ကိုနှိပ်ပါ။" ဟုရေးပါ။
+A0-A1 အဆင့်နှင့်ကိုက်ညီအောင် နွေးထွေးပြီး ရှင်းလင်းစွာပြောပါ။ Lesson ပြီးပြီဟု အလိုအလျောက် မပြောပါနှင့်။`;
 }
 
 function buildVoicePracticePrompt(lesson) {
-    return `You are a patient one-to-one English speaking teacher for a complete beginner.
+    return `You are a patient one-to-one English speaking teacher for a Myanmar complete beginner. Write all learner-facing instructions, feedback, labels, and explanations in Burmese; keep the transcription, corrected sentence, and practice sentence in English.
 This is a voice practice answer for Lesson ${lesson.id}: ${lesson.title}.
 Lesson goal: ${lesson.objective}
 Target language: ${lesson.explanation}
 Practice instruction: ${lesson.practice}
 Model answer: ${lesson.modelAnswer}
 
-Listen carefully to the student's voice. Give teacher-style feedback in this order:
-1. Encourage the student.
-2. Transcribe the main English sentence you heard.
-3. Give a corrected sentence if needed.
-4. Explain one grammar or pronunciation improvement simply in Burmese.
-5. Ask the student to repeat one improved English sentence.
-6. End with: “When you feel ready, send /nextlesson.”
-If the audio is unclear, say what part was unclear and ask them to try again. Do not mark the lesson complete automatically.`;
+Listen carefully to the student's voice. Give teacher-style feedback in this order, using Burmese for all instructions and feedback:
+1. မြန်မာလို အားပေးစကား။
+2. ကြားရသော အဓိက English ဝါကျကို ရေးပြပါ။
+3. လိုအပ်လျှင် Corrected English ပြပါ။
+4. Grammar သို့မဟုတ် pronunciation တိုးတက်စရာတစ်ခုကို မြန်မာလို ရှင်းပြပါ။
+5. English ဝါကျတစ်ကြောင်းကို ပြန်ပြောခိုင်းပါ။
+6. နောက်ဆုံးတွင် "အဆင်သင့်ဖြစ်ရင် /nextlesson ကိုနှိပ်ပါ။" ဟုရေးပါ။
+အသံမရှင်းလျှင် မရှင်းသည့်အပိုင်းကို မြန်မာလိုပြောပြီး ပြန်ပို့ခိုင်းပါ။ Lesson ပြီးပြီဟု အလိုအလျောက် မပြောပါနှင့်။`;
 }
 
 module.exports = { buildLessonIntro, buildTextPracticePrompt, buildVoicePracticePrompt };

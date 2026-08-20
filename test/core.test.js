@@ -24,6 +24,7 @@ const { LEVELS, getLesson: getAcademyLesson, getNextLesson, levelIsPremium } = r
 const { seedWordBank, getDueWords, reviewWord, skillReport } = require('../src/academy/learning');
 const { TRACKS, getTrack, trackIsPremium } = require('../src/academy/tracks');
 const { normalizeClassCode, studentSummary } = require('../src/classroom/classroom');
+const { buildAcademyTextPrompt, buildCoachPrompt, buildDailyPlanPrompt } = require('../src/academy/teacher');
 
 test('splitMessage keeps Telegram chunks under the configured limit', () => {
     const chunks = splitMessage('a'.repeat(8000), 3900);
@@ -174,6 +175,15 @@ test('privacy export and deletion remove learner records in memory fallback', as
     const after = await exportUserData(userId);
     assert.equal(after.courseProgress.active, false);
     assert.equal(after.academyProgress.active, false);
+});
+
+test('Burmese-first prompts preserve English practice content', () => {
+    const lesson = { number: 1, title: 'Greetings', objective: 'Introduce yourself', grammar: 'be', vocabulary: 'hello, name', speakingTask: 'Say: Hello, my name is...' };
+    const level = { title: 'Starter', cefr: 'A0' };
+    assert.match(buildAcademyTextPrompt(lesson, level, 'Hello'), /Burmese/);
+    assert.match(buildAcademyTextPrompt(lesson, level, 'Hello'), /မြန်မာ/);
+    assert.match(buildCoachPrompt(level, 'How can I practice?', { title: 'General English', description: 'Everyday English' }), /Burmese/);
+    assert.match(buildDailyPlanPrompt(level, lesson, {}, '2026-08-20'), /Burmese/);
 });
 
 test('reply keyboards are constructed with persistent Telegram layouts', () => {
