@@ -1,13 +1,15 @@
 {
-  "name": "englishtutorbot",
-  "version": "1.0.0",
-  "description": "",
+  "name": "english-tutor-bot",
+  "version": "1.1.0",
+  "description": "Telegram AI English tutor with Gemini, voice practice, IELTS mode, translation, and premium usage controls.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "check": "node check.js",
+    "test": "node --test"
   },
-  "keywords": [],
+  "keywords": ["telegram", "english-tutor", "gemini", "ielts", "translation"],
   "author": "",
   "license": "ISC",
   "type": "commonjs",

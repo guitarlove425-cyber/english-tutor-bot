@@ -1,76 +1,137 @@
-const { initializeApp, cert } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
-const serviceAccount = require("../../firebase-key.json");
+const fs = require('fs');
+const path = require('path');
+const { initializeApp, cert, getApps } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
+const { config } = require('../config');
 
-initializeApp({ credential: cert(serviceAccount) });
-const db = getFirestore();
+function loadServiceAccount() {
+    if (config.FIREBASE_SERVICE_ACCOUNT_JSON) {
+        return JSON.parse(config.FIREBASE_SERVICE_ACCOUNT_JSON);
+    }
+    if (config.FIREBASE_SERVICE_ACCOUNT_BASE64) {
+        return JSON.parse(Buffer.from(config.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf8'));
+    }
 
-// 🛑 သင့်ရဲ့ Telegram ID ကို အောက်ပါနေရာတွင် ပြောင်းထည့်ပါ။ (ဂဏန်းချည်းပဲ ဖြစ်ရပါမည်)
-// ID မသိသေးရင် အခုလောလောဆယ် ဒီအတိုင်းထားခဲ့ပါ။ Bot ကနေ ပြန်ကြည့်လို့ရအောင် အောက်မှာ လုပ်ပေးထားပါတယ်။
-const ADMIN_ID = 2035091217; 
+    const configuredPath = config.FIREBASE_SERVICE_ACCOUNT_FILE;
+    const defaultPath = path.resolve(__dirname, '../../firebase-key.json');
+    const filePath = configuredPath ? path.resolve(configuredPath) : defaultPath;
+    if (fs.existsSync(filePath)) {
+        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    }
+    return null;
+}
 
-// User တစ်ယောက်ကို Premium/Admin ဟုတ်မဟုတ်နှင့် ၅ ခါ ပြည့်/မပြည့် စစ်ဆေးမည့် Function
+let db = null;
+let firebaseEnabled = false;
+const memoryUsers = new Map();
+const memoryDailyUsage = new Map();
+
+try {
+    const serviceAccount = loadServiceAccount();
+    if (serviceAccount) {
+        if (!getApps().length) initializeApp({ credential: cert(serviceAccount) });
+        db = getFirestore();
+        firebaseEnabled = true;
+        console.log('✅ Firebase Firestore is enabled.');
+    } else {
+        console.warn('⚠️ Firebase credentials were not found. Using in-memory usage storage for this process.');
+    }
+} catch (error) {
+    console.error('⚠️ Firebase initialization failed. Using in-memory usage storage:', error.message);
+}
+
+const ADMIN_ID = config.ADMIN_ID;
+const DAILY_FREE_LIMIT = config.DAILY_FREE_LIMIT;
+
+function todayKey() {
+    return new Date().toISOString().slice(0, 10);
+}
+
+function getMemoryUser(userId) {
+    return memoryUsers.get(String(userId)) || {};
+}
+
 async function checkUsageLimit(userId) {
-    // ၁။ Admin ဟုတ်မဟုတ် အရင်စစ်မည် (Admin ဆိုလျှင် Limit မရှိပါ)
-    if (userId === ADMIN_ID) {
-        return { allowed: true, remaining: "Unlimited (Admin)" };
+    if (Number(userId) === ADMIN_ID) {
+        return { allowed: true, remaining: 'Unlimited (Admin)' };
     }
 
-    // ၂။ Premium User ဟုတ်မဟုတ် စစ်ဆေးမည်
-    const userDoc = await db.collection('users').doc(userId.toString()).get();
-    if (userDoc.exists) {
-        const userData = userDoc.data();
-        if (userData.isPremium) {
-            const expiryDate = new Date(userData.premiumExpiry);
-            const now = new Date();
-            
-            // Premium သက်တမ်း မကုန်သေးလျှင် (Limit မရှိပါ)
-            if (expiryDate > now) {
-                return { allowed: true, remaining: "Unlimited (Premium)" };
-            } else {
-                // သက်တမ်းကုန်သွားပါက Premium ကို ပိတ်ပစ်မည် (false လုပ်မည်)
-                await db.collection('users').doc(userId.toString()).update({ isPremium: false });
-            }
-        }
+    const userKey = String(userId);
+    const userData = firebaseEnabled
+        ? (await db.collection('users').doc(userKey).get()).data() || {}
+        : getMemoryUser(userKey);
+
+    if (userData.isPremium && userData.premiumExpiry && new Date(userData.premiumExpiry) > new Date()) {
+        return { allowed: true, remaining: 'Unlimited (Premium)' };
     }
 
-    // ၃။ Free User (သို့) Premium သက်တမ်းကုန်သွားသူများအတွက် နေ့စဉ် ၅ ခါ စစ်ဆေးခြင်း
-    const today = new Date().toISOString().split('T')[0];
-    const docId = `${userId}_${today}`;
-    const limitRef = db.collection('user_daily_usage').doc(docId);
-
-    try {
-        const doc = await limitRef.get();
-        if (!doc.exists) {
-            await limitRef.set({ count: 1, date: today });
-            return { allowed: true, remaining: 4 }; 
+    if (userData.isPremium && (!userData.premiumExpiry || new Date(userData.premiumExpiry) <= new Date())) {
+        if (firebaseEnabled) {
+            await db.collection('users').doc(userKey).set({ isPremium: false }, { merge: true });
         } else {
-            let currentCount = doc.data().count;
-            if (currentCount >= 5) {
-                return { allowed: false, remaining: 0 };
-            } else {
-                await limitRef.update({ count: currentCount + 1 });
-                return { allowed: true, remaining: 5 - (currentCount + 1) };
-            }
+            memoryUsers.set(userKey, { ...userData, isPremium: false });
         }
-    } catch (error) {
-        console.error("Firebase DB Error:", error);
-        return { allowed: true, remaining: "unknown" }; 
+    }
+
+    const usageKey = `${userKey}_${todayKey()}`;
+    if (!firebaseEnabled) {
+        const currentCount = memoryDailyUsage.get(usageKey) || 0;
+        if (currentCount >= DAILY_FREE_LIMIT) return { allowed: false, remaining: 0 };
+        const nextCount = currentCount + 1;
+        memoryDailyUsage.set(usageKey, nextCount);
+        return { allowed: true, remaining: DAILY_FREE_LIMIT - nextCount };
+    }
+
+    const usageRef = db.collection('user_daily_usage').doc(usageKey);
+    return db.runTransaction(async (transaction) => {
+        const snapshot = await transaction.get(usageRef);
+        const currentCount = snapshot.exists ? Number(snapshot.data().count || 0) : 0;
+        if (currentCount >= DAILY_FREE_LIMIT) return { allowed: false, remaining: 0 };
+        const nextCount = currentCount + 1;
+        transaction.set(usageRef, { count: nextCount, date: todayKey(), userId: userKey }, { merge: true });
+        return { allowed: true, remaining: DAILY_FREE_LIMIT - nextCount };
+    });
+}
+
+async function makeUserPremium(userId, days = 30) {
+    const parsedDays = Number(days);
+    if (!Number.isInteger(parsedDays) || parsedDays < 1 || parsedDays > 3650) {
+        throw new Error('Premium days must be an integer between 1 and 3650.');
+    }
+
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + parsedDays);
+    const userKey = String(userId);
+    const data = { isPremium: true, premiumExpiry: expiryDate.toISOString() };
+
+    if (firebaseEnabled) {
+        await db.collection('users').doc(userKey).set(data, { merge: true });
+    } else {
+        memoryUsers.set(userKey, { ...getMemoryUser(userKey), ...data });
+    }
+    return expiryDate.toISOString().slice(0, 10);
+}
+
+async function getUserMode(userId) {
+    const userKey = String(userId);
+    if (firebaseEnabled) {
+        const snapshot = await db.collection('users').doc(userKey).get();
+        return snapshot.exists && snapshot.data().mode ? snapshot.data().mode : 'default';
+    }
+    return getMemoryUser(userKey).mode || 'default';
+}
+
+async function setUserMode(userId, mode) {
+    const userKey = String(userId);
+    if (firebaseEnabled) {
+        await db.collection('users').doc(userKey).set({ mode }, { merge: true });
+    } else {
+        memoryUsers.set(userKey, { ...getMemoryUser(userKey), mode });
     }
 }
 
-// Admin မှ User အား Premium သက်တမ်း ထည့်ပေးမည့် Function
-async function makeUserPremium(userId, days = 30) {
-    const expiryDate = new Date();
-    expiryDate.setDate(expiryDate.getDate() + days); // ယနေ့မှစ၍ ရက်ပေါင်းထည့်ခြင်း
-    
-    await db.collection('users').doc(userId.toString()).set({
-        isPremium: true,
-        premiumExpiry: expiryDate.toISOString()
-    }, { merge: true }); // ရှိပြီးသား Data မပျက်အောင် merge သုံးခြင်း
-    
-    return expiryDate.toISOString().split('T')[0]; // ကုန်ဆုံးမည့်ရက်ကို ပြန်ပို့မည်
+function isFirebaseEnabled() {
+    return firebaseEnabled;
 }
 
-// အခြားဖိုင်များမှ လှမ်းသုံးနိုင်ရန် Export ထုတ်ခြင်း
-module.exports = { checkUsageLimit, makeUserPremium, ADMIN_ID };
+module.exports = { checkUsageLimit, makeUserPremium, getUserMode, setUserMode, isFirebaseEnabled, ADMIN_ID };

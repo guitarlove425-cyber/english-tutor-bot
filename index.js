@@ -1,30 +1,42 @@
-require('dotenv').config();
+const express = require('express');
 const { Telegraf } = require('telegraf');
 const { setupHandlers } = require('./src/bot/handlers');
-const express = require('express'); // 🌐 ထပ်တိုးထားသော Web Server Package
+const { config, validateRuntimeConfig } = require('./src/config');
+const { isFirebaseEnabled } = require('./src/database/firebase');
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+validateRuntimeConfig();
 
-// --- Render အတွက် Dummy Web Server ဖန်တီးခြင်း အစ ---
 const app = express();
-const PORT = process.env.PORT || 3000;
-
+app.disable('x-powered-by');
 app.get('/', (req, res) => {
-    res.send('✅ English Tutor Bot is running smoothly!');
+    res.status(200).json({
+        status: 'ok',
+        service: 'english-tutor-bot',
+        firebase: isFirebaseEnabled() ? 'enabled' : 'memory-fallback',
+        time: new Date().toISOString()
+    });
 });
 
-app.listen(PORT, () => {
-    console.log(`🌐 Web server is listening on port ${PORT}`);
+const server = app.listen(config.PORT, () => {
+    console.log(`🌐 Health server is listening on port ${config.PORT}`);
 });
-// --- Dummy Web Server အဆုံး ---
 
-console.log("⏳ Connecting to Telegram Server...");
+const bot = new Telegraf(config.BOT_TOKEN);
 setupHandlers(bot);
 
-bot.launch().then(() => {
-    console.log("✅ Professional English Tutor Bot is running smoothly!");
-});
+console.log('⏳ Connecting to Telegram...');
+bot.launch()
+    .then(() => console.log('✅ English Tutor Bot is running.'))
+    .catch((error) => {
+        console.error('❌ Telegram startup failed:', error.message);
+        server.close(() => process.exit(1));
+    });
 
-// Enable graceful stop
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+function shutdown(signal) {
+    console.log(`Received ${signal}; shutting down...`);
+    bot.stop(signal);
+    server.close(() => process.exit(0));
+}
+
+process.once('SIGINT', () => shutdown('SIGINT'));
+process.once('SIGTERM', () => shutdown('SIGTERM'));
