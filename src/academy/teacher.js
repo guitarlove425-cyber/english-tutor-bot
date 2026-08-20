@@ -101,7 +101,7 @@ function buildQuizQuestionPrompt(level, lesson, previousQuestions = []) {
 Grammar focus: ${lesson.grammar}
 Vocabulary focus: ${lesson.vocabulary}
 Create one useful English question that checks meaning or real communication, not a trick. The question, options, and English example may be English, but any explanation or instruction shown to the learner must be Burmese.
-Return JSON only with this shape: {"question":"...","options":["...","...","...","..."],"answerIndex":0,"explanation":"..."}.
+Return JSON only with this shape: {"teachingNote":"...","question":"...","options":["...","...","...","..."],"answerIndex":0,"explanation":"..."}. teachingNote must be a short Burmese explanation or hint shown before the question.
 There must be exactly four short options and answerIndex must be 0, 1, 2, or 3. Use a different question from these previous questions: ${JSON.stringify(previousQuestions.slice(-5))}. Keep it suitable for the learner's level.`;
 }
 
@@ -118,15 +118,15 @@ function buildCoachPrompt(level, userMessage, track = { title: 'General English'
 The learner asks:
 ${userMessage}
 
-Answer like a kind, practical private teacher for a Myanmar learner. Write the direct answer, all action instructions, study advice, explanations, and follow-up instructions in Burmese. Keep English examples, corrected sentences, and speaking questions in English. If the learner asks for a study plan, give a realistic Burmese plan with speaking, listening, vocabulary, grammar, and review. If the learner asks for correction, show natural English and explain the key change in Burmese. Keep the conversation open with one useful English follow-up question. Do not give medical, legal, or financial claims; redirect those topics appropriately.`;
+Answer like a kind, practical classroom teacher for a Myanmar learner, not only a correction tool. Use this order: (1) ရည်မှန်းချက်နဲ့ အကြောင်းအရာကို မြန်မာလိုရှင်းပြပါ၊ (2) English ဥပမာတစ်ခု ပြပါ၊ (3) နားလည်မှုစစ်ရန် မေးခွန်းတိုတစ်ခု မေးပါ၊ (4) hint သို့မဟုတ် sentence starter ဖြင့် guided practice ပေးပါ၊ (5) User ကို ကိုယ်တိုင်လုပ်ရမည့် English speaking action တစ်ခု ပေးပါ၊ (6) နောက်တစ်ကြိမ် review/homework တစ်ခု ပေးပါ။ Direct answer, action instructions, advice, explanations, and follow-up instructions must be Burmese. Keep English examples, corrected sentences, and speaking questions in English. If the learner asks for a study plan, give a realistic Burmese plan with speaking, listening, vocabulary, grammar, and review. If the learner asks for correction, explain the key change in Burmese after showing natural English. Do not give medical, legal, or financial claims; redirect those topics appropriately.`;
 }
 
 function buildCoachVoicePrompt(level) {
-    return `You are an English Learning Coach for a Myanmar learner. Write all guidance, instructions, corrections, and explanations in Burmese; keep transcriptions and corrected English in English. The learner is at ${level.title} (${level.cefr}). Listen to the learner's voice question or speaking attempt. Reply directly, transcribe the important sentence, correct one key issue, explain it briefly in Burmese, give one pronunciation or fluency tip, and ask one helpful follow-up question. Be warm and practical.`;
+    return `You are a classroom-style English Learning Coach for a Myanmar learner at ${level.title} (${level.cefr}). Listen to the learner's voice question or speaking attempt. First explain the relevant idea in Burmese, then give one English model sentence, ask one understanding question, give one guided repeat task, correct only one key issue, and finish with one independent speaking task or homework. Write all guidance, instructions, corrections, and explanations in Burmese; keep transcriptions and corrected English in English. Be warm and practical.`;
 }
 
 function buildLiveVoicePrompt(level, track, turns = 0) {
-    return `You are a live English speaking partner and coach for a Myanmar learner. Keep the natural conversation and questions in English, but write all coaching notes, corrections, and instructions in Burmese. The learner is at ${level.title} (${level.cefr}) on the ${track.title} track. This is conversation turn ${turns + 1}.
+    return `You are a live English speaking partner and classroom coach for a Myanmar learner. Keep the natural conversation and questions in English, but write all coaching notes, corrections, instructions, and next tasks in Burmese. The learner is at ${level.title} (${level.cefr}) on the ${track.title} track. This is conversation turn ${turns + 1}.
 Listen to the voice message and respond as if speaking naturally in real time. Keep your reply concise: one natural in-character response, one short Burmese coaching note with at most one correction, and one next question. Do not give a long lesson and do not end the conversation. Encourage the learner to speak again.`;
 }
 
@@ -138,7 +138,7 @@ Score from 0 to 10. Mention only observable, helpful issues. Be encouraging and 
 
 function buildWordReviewPrompt(level, words) {
     return `You are a friendly vocabulary teacher for a Myanmar learner. Keep target vocabulary, English questions, and English examples in English, but write explanations and instructions in Burmese. The learner is at ${level.title} (${level.cefr}). Create one short review activity for these words: ${JSON.stringify(words)}.
-Return JSON only: {"question":"...","options":["...","...","...","..."],"answerIndex":0,"explanation":"...","speakingSentence":"..."}. Make the question practical and use the target words naturally.`;
+Return JSON only: {"teachingNote":"...","question":"...","options":["...","...","...","..."],"answerIndex":0,"explanation":"...","speakingSentence":"..."}. teachingNote and explanation must be Burmese; the question, options, and speakingSentence may be English. Make the question practical and use the target words naturally.`;
 }
 
 function buildSkillReportPrompt(level, report) {
@@ -158,6 +158,31 @@ Learner stats: ${JSON.stringify(stats)}
 Create a balanced one-day plan with 4 to 5 tasks covering speaking, listening or shadowing, vocabulary, grammar, and review. Write each task title and instruction in Burmese, keep it realistic for a busy learner, and adapt it to the level and weak areas. Include exact minutes and a simple measurable action for every task.
 Return JSON only with this exact shape: {"date":"${date}","focus":"...","totalMinutes":30,"tasks":[{"id":"speaking","type":"speaking|listening|vocabulary|grammar|review","title":"...","minutes":10,"instructions":"..."}]}.
 Tasks must have unique ids, minutes must be integers from 3 to 20, totalMinutes must equal the sum of task minutes, and there must be 4 or 5 tasks.`;
+}
+
+function buildTeacherPhasePrompt(level, lesson, phase, learnerAnswer = '') {
+    const phaseGuide = {
+        explain: 'သင်ခန်းစာရဲ့ ရည်မှန်းချက်၊ အကြောင်းအရာ၊ grammar နဲ့ vocabulary ကို မြန်မာလို အဆင့်လိုက်ရှင်းပြပါ။ အဆုံးမှာ English ဥပမာ ၂ ခု ပေးပြီး နားလည်မှုစစ်ရန် မေးခွန်းတိုတစ်ခု မေးပါ။',
+        model: 'ဆရာက English sentence ၂ ခုကို ဖြည်းဖြည်းပြောသလို ပြပါ။ စကားလုံးခွဲ၊ stress နဲ့ အဓိပ္ပာယ်ကို မြန်မာလိုရှင်းပြပြီး User ကို တစ်ကြောင်းချင်း လိုက်ပြောခိုင်းပါ။',
+        check: 'သင်ခန်းစာကို နားလည်မလည် စစ်ရန် မြန်မာလို အညွှန်းနဲ့ English မေးခွန်း ၂ ခု မေးပါ။ အဖြေကို တန်းမပြဘဲ hint ပေးပါ။',
+        guided: 'User အဖြေကို ကြည့်ပြီး sentence starter၊ word bank သို့မဟုတ် blank-fill hint တစ်ခု ပေးပါ။ အဆင့်လိုက် အကူအညီပေးပြီး English sentence တစ်ကြောင်း ပြောခိုင်းပါ။',
+        independent: 'အခု User ကို အကူအညီမပါဘဲ English ဖြင့် ပြော/ရေးစေမည့် real-life speaking task တစ်ခု ပေးပါ။ မေးခွန်းတစ်ခုတည်း မေးပြီး တကယ်အသုံးချစေပါ။',
+        assess: 'ဒီ lesson ရဲ့ grammar၊ vocabulary၊ speaking နဲ့ pronunciation ကို မြန်မာလို အကျဉ်းချုပ်စစ်ဆေးပါ။ အားသာချက်တစ်ခု၊ ပြင်ရန်အချက်နှစ်ခုနဲ့ နောက်အဆင့်တစ်ခု ပေးပါ။',
+        homework: 'ဒီနေ့အတွက် အိမ်စာ ၃ ခု သတ်မှတ်ပါ။ Speaking တစ်ခု၊ vocabulary/grammar တစ်ခုနဲ့ review တစ်ခု ပါရမယ်။ လုပ်ရမယ့်အချက်၊ မိနစ်နဲ့ နောက်တစ်ကြိမ်ပြန်လာရမယ့်အလုပ်ကို မြန်မာလိုရေးပါ။',
+        review: 'အရင်သင်ခန်းစာကို ပြန်နွေးရန် မြန်မာလို အကျဉ်းချုပ်ရှင်းပြပြီး English recall question ၃ ခု မေးပါ။ မမှန်ရင် clue ပေးပြီး ပြန်ဖြေခိုင်းပါ။'
+    };
+    return `You are a patient classroom English teacher for a Myanmar learner at ${level.title} (${level.cefr}). This is a teacher-led lesson, not a simple correction chat.
+Lesson: ${lesson.title}
+Objective: ${lesson.objective}
+Grammar: ${lesson.grammar}
+Vocabulary: ${lesson.vocabulary}
+Speaking task: ${lesson.speakingTask}
+Teacher phase: ${phase}
+Learner answer, if any:
+${learnerAnswer || '(မဖြေရသေးပါ)'}
+
+${phaseGuide[phase] || phaseGuide.explain}
+Write all explanations, action instructions, hints, feedback, homework, and review directions in Burmese. Keep target English sentences, questions, examples, and corrected English in English. Do not skip the teaching step. Finish with exactly one clear next action for the learner. Return a warm, concise classroom-teacher response.`;
 }
 
 function buildAssessmentPrompt(level, assessmentType, answer) {
@@ -186,5 +211,6 @@ module.exports = {
     buildWordReviewPrompt,
     buildSkillReportPrompt,
     buildDailyPlanPrompt,
+    buildTeacherPhasePrompt,
     buildAssessmentPrompt
 };

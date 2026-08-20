@@ -144,6 +144,10 @@ function defaultCourseProgress() {
         practiceAttempts: 0,
         speakingAttempts: 0,
         lastScore: null,
+        teacherSession: null,
+        homework: [],
+        reviewQueue: [],
+        lessonHistory: [],
         startedAt: null,
         updatedAt: null
     };
@@ -211,6 +215,9 @@ function defaultAcademyProgress() {
         lessonNumber: 1,
         completedLessons: [],
         reviewQueue: [],
+        teacherSession: null,
+        homework: [],
+        lessonHistory: [],
         practiceAttempts: 0,
         speakingAttempts: 0,
         assessmentCount: 0,

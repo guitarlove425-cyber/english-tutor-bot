@@ -24,7 +24,8 @@ const { LEVELS, getLesson: getAcademyLesson, getNextLesson, levelIsPremium } = r
 const { seedWordBank, getDueWords, reviewWord, skillReport } = require('../src/academy/learning');
 const { TRACKS, getTrack, trackIsPremium } = require('../src/academy/tracks');
 const { normalizeClassCode, studentSummary } = require('../src/classroom/classroom');
-const { buildAcademyTextPrompt, buildCoachPrompt, buildDailyPlanPrompt } = require('../src/academy/teacher');
+const { buildAcademyTextPrompt, buildCoachPrompt, buildDailyPlanPrompt, buildTeacherPhasePrompt } = require('../src/academy/teacher');
+const { createTeacherSession, advanceTeacherSession, normalizeHomework, completeHomework, scheduleReview } = require('../src/academy/session');
 
 test('splitMessage keeps Telegram chunks under the configured limit', () => {
     const chunks = splitMessage('a'.repeat(8000), 3900);
@@ -177,6 +178,16 @@ test('privacy export and deletion remove learner records in memory fallback', as
     assert.equal(after.academyProgress.active, false);
 });
 
+test('teacher-led sessions progress through classroom phases and persist homework/review data', () => {
+    const session = createTeacherSession('academy_lesson', { lessonId: 'starter-1' });
+    assert.equal(session.phase, 'explain');
+    const guided = advanceTeacherSession(session, 'guided');
+    assert.equal(guided.phase, 'guided');
+    const homework = normalizeHomework([{ id: 'hw1', title: 'Speaking', instructions: 'English ဖြင့် ပြောပါ။' }]);
+    assert.equal(completeHomework(homework, 'hw1')[0].completed, true);
+    assert.equal(scheduleReview([], { id: 'starter-1', title: 'Greetings' })[0].id, 'starter-1');
+});
+
 test('Burmese-first prompts preserve English practice content', () => {
     const lesson = { number: 1, title: 'Greetings', objective: 'Introduce yourself', grammar: 'be', vocabulary: 'hello, name', speakingTask: 'Say: Hello, my name is...' };
     const level = { title: 'Starter', cefr: 'A0' };
@@ -184,6 +195,7 @@ test('Burmese-first prompts preserve English practice content', () => {
     assert.match(buildAcademyTextPrompt(lesson, level, 'Hello'), /မြန်မာ/);
     assert.match(buildCoachPrompt(level, 'How can I practice?', { title: 'General English', description: 'Everyday English' }), /Burmese/);
     assert.match(buildDailyPlanPrompt(level, lesson, {}, '2026-08-20'), /Burmese/);
+    assert.match(buildTeacherPhasePrompt(level, lesson, 'explain'), /teacher-led/);
 });
 
 test('reply keyboards are constructed with persistent Telegram layouts', () => {
@@ -215,7 +227,7 @@ test('Academy Telegram handlers register all public flows', () => {
         telegram: { sendMessage: async () => {} }
     };
     setupHandlers(fakeBot);
-    for (const command of ['academy', 'levels', 'academylesson', 'academyquiz', 'coach', 'dailyplan', 'wordbank', 'pronunciation', 'livevoice', 'endlive', 'skillreport', 'tracks', 'privacy', 'classroom', 'teacher', 'classroom_create', 'classroom_join', 'classroom_dashboard', 'exportdata', 'deletedata', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
+    for (const command of ['academy', 'levels', 'academylesson', 'teacherlesson', 'homework', 'academyquiz', 'coach', 'dailyplan', 'wordbank', 'pronunciation', 'livevoice', 'endlive', 'skillreport', 'tracks', 'privacy', 'classroom', 'teacher', 'classroom_create', 'classroom_join', 'classroom_dashboard', 'exportdata', 'deletedata', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
         assert.ok(registered.commands.includes(command), `missing /${command}`);
     }
     assert.ok(registered.events.includes('text'));
@@ -236,4 +248,6 @@ test('Academy Telegram handlers register all public flows', () => {
     assert.ok(registered.hears.includes(BUTTONS.main.privacy));
     assert.ok(registered.hears.includes(BUTTONS.main.classroom));
     assert.ok(registered.hears.includes(BUTTONS.academy.liveVoice));
+    assert.ok(registered.actions.some((action) => String(action).includes('teacher_phase')));
+    assert.ok(registered.actions.some((action) => String(action).includes('teacher_homework')));
 });
