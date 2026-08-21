@@ -303,7 +303,7 @@ async function sendKidsLesson(ctx, progress) {
     const session = progress.teacherSession?.lessonId === String(lesson.id)
         ? progress.teacherSession
         : createTeacherSession('kids_lesson', { lessonId: String(lesson.id), stageId: stage.id, phase: 'explain' });
-    const updated = await saveKidsProgress(ctx.from.id, { ...progress, teacherSession: session });
+    const updated = await saveKidsProgress(ctx.from.id, { ...progress, teacherSession: session, pronunciationRequest: false });
     await replyLongText(ctx, `🧒 ${stage.title}\nLesson ${lesson.id}/${KIDS_COURSE.length}: ${lesson.title}\n\nရည်မှန်းချက်: ${lesson.objective}\n\nEnglish model:\n${lesson.model}\n\nဒီနေ့လေ့ကျင့်ရန်: ${lesson.speakingTask}\n\nသင်ခန်းစာအချိန်: ${lesson.minutes} မိနစ်`);
     await ctx.reply('ကလေးက အခု ဆရာရှင်းပြချက်ကို စတင်ပါ။ ခလုတ်တစ်ခုကိုသာ နှိပ်ပါ။', Markup.removeKeyboard());
     return ctx.reply('တစ်ဆင့်ပြီးမှ တစ်ဆင့်သာ ဆက်သွားပါမယ်။', kidsLessonKeyboard(updated.teacherSession), updated);
@@ -464,7 +464,7 @@ async function sendCurrentLesson(ctx, progress) {
     const teacherSession = existingSession.lessonId === String(lesson.id)
         ? existingSession
         : createTeacherSession('course_lesson', { lessonId: String(lesson.id) });
-    const updated = await saveCourseProgress(ctx.from.id, { ...progress, teacherSession });
+    const updated = await saveCourseProgress(ctx.from.id, { ...progress, teacherSession, pronunciationRequest: false });
     await replyLongText(ctx, buildLessonIntro(lesson, BEGINNER_COURSE.length));
     await sendEnglishVoiceReply(ctx, lesson.examples.join('. '));
     await ctx.reply('👩‍🏫 ပထမဆုံး ဆရာရှင်းပြချက်ကို စတင်ရန် အောက်ကခလုတ်တစ်ခုကို နှိပ်ပါ။', Markup.removeKeyboard());
@@ -530,7 +530,9 @@ async function sendAcademyLesson(ctx, progress) {
     const updated = await saveAcademyProgress(ctx.from.id, {
         ...progress,
         wordBank,
-        teacherSession
+        teacherSession,
+        session: null,
+        pronunciationRequest: false
     });
     await replyLongText(ctx, buildAcademyLessonIntro(lesson, level, level.lessons.length));
     await sendEnglishVoiceReply(ctx, `${lesson.title}. ${lesson.objective}. ${lesson.grammar}.`);
@@ -1501,7 +1503,7 @@ function setupHandlers(bot) {
             const progress = await getAcademyProgress(ctx.from.id);
             if (!progress.active) return ctx.reply('သင့်အဆင့်နဲ့ကိုက်ညီတဲ့ conversation စတင်ရန် အရင်ဆုံး /academy ကိုနှိပ်ပါ။');
             if (!(await hasAcademyAccess(ctx, progress.levelId))) return;
-            await saveAcademyProgress(ctx.from.id, { ...progress, session: { type: 'live_voice', turns: 0, startedAt: new Date().toISOString() } });
+            await saveAcademyProgress(ctx.from.id, { ...progress, session: { type: 'live_voice', turns: 0, startedAt: new Date().toISOString() }, teacherSession: null, pronunciationRequest: false });
             const track = getTrack(progress.trackId);
             await ctx.reply(`🎙️ Live Voice Conversation အဆင်သင့်ဖြစ်ပါပြီ။\n\nလေ့လာမည့်လမ်းကြောင်း: ${track.title}\nEnglish ဖြင့် အသံပို့ပါ။ သဘာဝကျစွာ ပြန်ပြောပြီး မေးခွန်းတစ်ခု ဆက်မေးပေးပါမယ်။\n\nပြီးဆုံးလိုပါက /endlive ကိုနှိပ်ပါ။ ပြီးဆုံးသည့်အကြောင်း အကျဉ်းချုပ် ပြန်ပေးပါမယ်။`, academyKeyboard());
         } catch (error) {
@@ -1513,7 +1515,7 @@ function setupHandlers(bot) {
     bot.command('endlive', async (ctx) => {
         const progress = await getAcademyProgress(ctx.from.id);
         const turns = progress.session?.type === 'live_voice' ? Number(progress.session.turns || 0) : 0;
-        await saveAcademyProgress(ctx.from.id, { ...progress, session: null });
+        await saveAcademyProgress(ctx.from.id, { ...progress, session: null, teacherSession: null, pronunciationRequest: false });
         await ctx.reply(`🎙️ Live Voice Conversation ပြီးဆုံးပါပြီ။\nပြောဆိုခဲ့သည့်အကြိမ်: ${turns}\nမနက်ဖြန်လည်း ဆက်လေ့ကျင့်ပြီး ယုံကြည်မှုနဲ့ fluency ကို တိုးတက်အောင်လုပ်ပါ။`, academyKeyboard());
     });
 
@@ -2092,26 +2094,26 @@ function setupHandlers(bot) {
                 classroomKeyboard,
                 homeKeyboard: mainKeyboard
             })) return;
-            if (kids.pronunciationRequest && kids.active && kids.teacherSession?.type === 'kids_lesson') {
+            const sessionType = academy.session?.type;
+            const academyLesson = academy.active ? getAcademyLesson(academy.levelId, academy.lessonNumber) : null;
+            const course = await getCourseProgress(ctx.from.id);
+            if (!sessionType && kids.pronunciationRequest && kids.active && kids.teacherSession?.type === 'kids_lesson') {
                 await saveKidsProgress(ctx.from.id, { ...kids, pronunciationRequest: false });
                 return pronunciationReply(ctx, userMessage, kidsLessonKeyboard(kids.teacherSession));
             }
-            if (academy.pronunciationRequest && academy.active && academy.teacherSession?.type === 'academy_lesson') {
+            if ((!sessionType || sessionType === 'academy_lesson') && academy.pronunciationRequest && academy.active && academy.teacherSession?.type === 'academy_lesson') {
                 await saveAcademyProgress(ctx.from.id, { ...academy, pronunciationRequest: false });
                 return pronunciationReply(ctx, userMessage, teacherLessonKeyboard(academy.teacherSession));
             }
-            const course = await getCourseProgress(ctx.from.id);
-            if (course.pronunciationRequest && course.active && course.teacherSession?.type === 'course_lesson') {
+            if (!sessionType && course.pronunciationRequest && course.active && course.teacherSession?.type === 'course_lesson') {
                 await saveCourseProgress(ctx.from.id, { ...course, pronunciationRequest: false });
                 return pronunciationReply(ctx, userMessage, teacherLessonKeyboard(course.teacherSession));
             }
-            const sessionType = academy.session?.type;
-            const academyLesson = academy.active ? getAcademyLesson(academy.levelId, academy.lessonNumber) : null;
             const status = await usageOrReply(ctx);
             if (!status) return;
             await ctx.sendChatAction('typing');
 
-            if (kids.active && kids.teacherSession?.type === 'kids_lesson') {
+            if (!sessionType && kids.active && kids.teacherSession?.type === 'kids_lesson') {
                 return runKidsPhase(ctx, kids.teacherSession.phase || 'explain', userMessage);
             }
 
@@ -2336,13 +2338,13 @@ function setupHandlers(bot) {
             const sessionType = academy.session?.type;
             const academyLesson = academy.active ? getAcademyLesson(academy.levelId, academy.lessonNumber) : null;
             const course = await getCourseProgress(ctx.from.id);
-            const kidsLessonPhase = kids.active && kids.teacherSession?.type === 'kids_lesson'
+            const kidsLessonPhase = !sessionType && kids.active && kids.teacherSession?.type === 'kids_lesson'
                 ? normalizeTeacherSession(kids.teacherSession).phase
                 : null;
-            const academyTeacherPhase = academy.active && academyLesson && academy.teacherSession?.type === 'academy_lesson'
+            const academyTeacherPhase = (!sessionType || sessionType === 'academy_lesson') && academy.active && academyLesson && academy.teacherSession?.type === 'academy_lesson'
                 ? normalizeTeacherSession(academy.teacherSession).phase
                 : null;
-            const courseTeacherPhase = course.active && course.teacherSession?.type === 'course_lesson'
+            const courseTeacherPhase = !sessionType && course.active && course.teacherSession?.type === 'course_lesson'
                 ? normalizeTeacherSession(course.teacherSession).phase
                 : null;
             if (kidsLessonPhase && kidsLessonPhase !== 'independent') {
@@ -2363,11 +2365,7 @@ function setupHandlers(bot) {
             if (!response.ok) throw new Error(`Telegram file download failed: ${response.status}`);
             const buffer = Buffer.from(await response.arrayBuffer());
 
-            if (kids.active && kids.teacherSession?.type === 'kids_lesson') {
-                const kidsPhase = normalizeTeacherSession(kids.teacherSession).phase;
-                if (kidsPhase !== 'independent') {
-                    return ctx.reply('ဒီ Kids lesson အဆင့်မှာ အသံဖိုင် မလိုအပ်ပါ။ အောက်က ခလုတ်ကိုနှိပ်ပါ သို့မဟုတ် စာဖြင့် အဖြေတိုပို့ပါ။', kidsLessonKeyboard(kids.teacherSession));
-                }
+            if (kidsLessonPhase) {
                 return runKidsVoicePhase(ctx, buffer, ctx.message.voice.mime_type || 'audio/ogg');
             }
 
@@ -2550,11 +2548,7 @@ function setupHandlers(bot) {
 
             const progress = await getCourseProgress(ctx.from.id);
             const activeLesson = progress.active ? getBeginnerLesson(progress.currentLesson) : null;
-            if (activeLesson && progress.teacherSession?.type === 'course_lesson') {
-                const teacherPhase = normalizeTeacherSession(progress.teacherSession).phase;
-                if (teacherPhase !== 'independent') {
-                    return ctx.reply('ဒီသင်ခန်းစာအဆင့်မှာ အသံဖိုင် မလိုအပ်ပါ။ အောက်က ခလုတ်ကိုနှိပ်ပါ သို့မဟုတ် စာဖြင့် အဖြေတိုပို့ပါ။', teacherLessonKeyboard(progress.teacherSession));
-                }
+            if (activeLesson && courseTeacherPhase) {
                 return runTeacherVoicePhase(ctx, buffer, ctx.message.voice.mime_type || 'audio/ogg');
             }
             const currentMode = activeLesson ? 'default' : await getCurrentMode(ctx.from.id);
