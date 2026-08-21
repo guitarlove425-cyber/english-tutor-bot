@@ -28,12 +28,13 @@ const { LEVELS, getLesson: getAcademyLesson, getNextLesson, levelIsPremium } = r
 const { seedWordBank, getDueWords, reviewWord, skillReport, recordLessonEvidence, getLessonMastery, lessonNeedsRemediation, canAdvanceLesson, weakSkills } = require('../src/academy/learning');
 const { TRACKS, getTrack, trackIsPremium } = require('../src/academy/tracks');
 const { normalizeClassCode, studentSummary } = require('../src/classroom/classroom');
-const { buildAcademyTextPrompt, buildCoachPrompt, buildDailyPlanPrompt, buildTeacherPhasePrompt, buildRemediationPrompt } = require('../src/academy/teacher');
+const { buildAcademyTextPrompt, buildAcademyVoicePrompt, buildCoachPrompt, buildCoachVoicePrompt, buildDailyPlanPrompt, buildTeacherPhasePrompt, buildRemediationPrompt, buildQuizFeedbackPrompt, buildRoleplayPrompt, buildAssessmentPrompt } = require('../src/academy/teacher');
 const { createTeacherSession, advanceTeacherSession, normalizeHomework, completeHomework, scheduleReview, getDueReviews, completeReview } = require('../src/academy/session');
 const { errorStatus, isTransientError, retryDelayMs, modelCandidates } = require('../src/ai/gemini');
 const { normalizeLearnerProfile, recommendTeachingMode, profileSummary } = require('../src/academy/orchestrator');
 const { KIDS_STAGES, KIDS_COURSE, getKidsLesson, getKidsStage } = require('../src/kids/content');
-const { buildKidsLessonPrompt, buildKidsVoicePrompt, buildKidsProgressPrompt } = require('../src/kids/teacher');
+const { buildKidsLessonPrompt, buildKidsVoicePrompt, buildKidsReviewPrompt, buildKidsProgressPrompt } = require('../src/kids/teacher');
+const { buildTextPracticePrompt, buildVoicePracticePrompt } = require('../src/course/teacher');
 
 test('Kids pathway covers Discovery through Young Pro with child-safe prompts', async () => {
     assert.equal(KIDS_STAGES.length, 6);
@@ -267,6 +268,32 @@ test('Burmese-first prompts preserve English practice content', () => {
     assert.match(buildDailyPlanPrompt(level, lesson, {}, '2026-08-20'), /Burmese/);
     assert.match(buildTeacherPhasePrompt(level, lesson, 'explain'), /teacher-led/);
     assert.match(buildRemediationPrompt(level, lesson, ['speaking']), /Weak skills to target/);
+});
+
+test('teacher prompts require detailed classroom explanation and one next action', () => {
+    const lesson = { id: 1, number: 1, title: 'Greetings', objective: 'Introduce yourself', grammar: 'be', vocabulary: 'hello, name', speakingTask: 'Say: Hello, my name is...', explanation: 'Use this pattern to introduce yourself.', practice: 'Say your name.', modelAnswer: 'Hello, my name is Aye.', model: 'Hello, my name is Aye.' };
+    const level = { title: 'Starter', cefr: 'A0' };
+    const prompts = [
+        buildAcademyTextPrompt(lesson, level, 'Hello'),
+        buildAcademyVoicePrompt(lesson, level),
+        buildCoachPrompt(level, 'How can I practice?', { title: 'General English', description: 'Everyday English' }),
+        buildCoachVoicePrompt(level),
+        buildTeacherPhasePrompt(level, lesson, 'explain'),
+        buildRemediationPrompt(level, lesson, ['speaking']),
+        buildQuizFeedbackPrompt(level, lesson, 'Choose a greeting', 'Hi', 'Hello'),
+        buildRoleplayPrompt(lesson, level, 'Hello'),
+        buildAssessmentPrompt(level, 'checkpoint', 'Hello'),
+        buildTextPracticePrompt(lesson, 'Hello'),
+        buildVoicePracticePrompt(lesson),
+        buildKidsLessonPrompt(lesson, 'Discovery'),
+        buildKidsVoicePrompt(lesson, 'Discovery'),
+        buildKidsReviewPrompt(lesson, 'Discovery', 'Hello')
+    ];
+    for (const prompt of prompts) {
+        assert.match(prompt, /Burmese|မြန်မာ/);
+        assert.match(prompt, /understanding|နားလည်မှု|check/i);
+        assert.match(prompt, /next action|လုပ်ရမည့်|ပြန်ပို့ပါ|practice/i);
+    }
 });
 
 test('Admin controls are isolated from ordinary global keyboards', () => {
