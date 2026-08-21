@@ -118,7 +118,7 @@ Lesson စတင်ချိန်တွင် Bot က သင်ခန်းစ�
 | Homework | သတ်မှတ်ထားသော speaking/writing လေ့ကျင့်ခန်းလုပ်ပါ |
 | Review | မမှတ်မိသေးသောအချက်များကို ပြန်လေ့ကျင့်ပါ |
 
-Lesson အတွင်း Bot က မည်သည့်ခလုတ်ကို နှိပ်ရမည်ကို စာသားဖြင့်လည်း ရှင်းပြပေးပါမည်။ ခလုတ်တစ်ခု မပေါ်သေးလျှင် လက်ရှိအဆင့် AI response ပြီးဆုံးသည်အထိ စောင့်ပါ။
+Lesson အတွင်း Bot က မည်သည့်ခလုတ်ကို နှိပ်ရမည်ကို စာသားဖြင့်လည်း ရှင်းပြပေးပါမည်။ ခလုတ်တစ်ခု မပေါ်သေးလျှင် လက်ရှိအဆင့် AI response ပြီးဆုံးသည်အထိ စောင့်ပါ။ ရှင်းပြချက်၊ ဥပမာ၊ Check၊ Guided Practice နှင့် Review အဆင့်များတွင် အသံဖိုင်မလိုအပ်ပါ။ Bot က တကယ်လိုအပ်သည့် Independent Speaking၊ Pronunciation၊ Live Voice သို့မဟုတ် သီးခြား Voice Diagnostic အဆင့်ရောက်မှသာ Voice ပို့ရန် ညွှန်ကြားပါမည်။
 
 ## ၆။ Academy Practice tools
 
@@ -143,7 +143,7 @@ Quiz မေးခွန်းရောက်လာလျှင် A, B, C, D ခ
 
 ### Voice အသုံးပြုခြင်း
 
-Voice လေ့ကျင့်ခန်းတွင် Telegram microphone ကိုနှိပ်ပြီး အဖြေကို English ဖြင့် ပြောကာ ပို့ပါ။ အသံကို တတ်နိုင်သမျှ တိုတို၊ ရှင်းရှင်းနှင့် ဆူညံသံနည်းသောနေရာမှ ပို့ပါ။ Bot က transcription၊ grammar၊ fluency သို့မဟုတ် pronunciation အပေါ်မူတည်၍ feedback ပြန်ပေးပါမည်။
+Voice လေ့ကျင့်ခန်းတွင် Bot က အသံလိုအပ်ကြောင်း ပြောသည့်အခါမှ Telegram microphone ကိုနှိပ်ပြီး အဖြေကို English ဖြင့် ပြောကာ ပို့ပါ။ ရှင်းပြချက်၊ model၊ check နှင့် guided practice အဆင့်များအတွက် အသံဖိုင်မပို့ပါနှင့်။ အသံကို တတ်နိုင်သမျှ တိုတို၊ ရှင်းရှင်းနှင့် ဆူညံသံနည်းသောနေရာမှ ပို့ပါ။ Bot က transcription၊ grammar၊ fluency သို့မဟုတ် pronunciation အပေါ်မူတည်၍ feedback ပြန်ပေးပါမည်။
 
 ## ၇။ Learning Coach နှင့် Daily Study Plan
 

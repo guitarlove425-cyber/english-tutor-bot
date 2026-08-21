@@ -87,6 +87,7 @@ test('Kids pathway covers Discovery through Young Pro with child-safe prompts', 
     assert.equal(getKidsLesson(30).stageId, 'pro');
     assert.equal(getKidsStage('academic').cefr, 'B1-B2');
     assert.match(buildKidsLessonPrompt(getKidsLesson(1), getKidsStage('discovery').title), /Myanmar child/);
+    assert.match(buildKidsLessonPrompt(getKidsLesson(1), getKidsStage('discovery').title, 'Hello', 'check'), /အသံဖိုင်မလိုအပ်ပါ/);
     assert.match(buildKidsVoicePrompt(getKidsLesson(1), 'Discovery English'), /Do not shame/);
     assert.match(buildKidsProgressPrompt({ currentLesson: 1 }, 0, 30), /trusted adult/);
     const userId = `kids-${Date.now()}`;
@@ -312,6 +313,8 @@ test('Burmese-first prompts preserve English practice content', () => {
     assert.match(buildCoachPrompt(level, 'How can I practice?', { title: 'General English', description: 'Everyday English' }), /Burmese/);
     assert.match(buildDailyPlanPrompt(level, lesson, {}, '2026-08-20'), /Burmese/);
     assert.match(buildTeacherPhasePrompt(level, lesson, 'explain'), /teacher-led/);
+    assert.match(buildTeacherPhasePrompt(level, lesson, 'check'), /အသံဖိုင် မလိုအပ်ပါ/);
+    assert.match(buildTeacherPhasePrompt(level, lesson, 'independent'), /စာဖြင့် သို့မဟုတ် အသံဖြင့်/);
     assert.match(buildRemediationPrompt(level, lesson, ['speaking']), /Weak skills to target/);
 });
 

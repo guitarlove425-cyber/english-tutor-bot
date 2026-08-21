@@ -311,7 +311,7 @@ async function runKidsPhase(ctx, requestedPhase = 'explain', learnerAnswer = '')
     const phase = requestedPhase === 'speak' ? 'independent' : requestedPhase;
     const prompt = phase === 'review'
         ? buildKidsReviewPrompt(lesson, stage.title, learnerAnswer || 'မစရသေးပါ')
-        : buildKidsLessonPrompt(lesson, stage.title, learnerAnswer) + `\nTeacher phase: ${phase}. Keep the activity short and child-friendly.`;
+        : buildKidsLessonPrompt(lesson, stage.title, learnerAnswer, phase) + `\nTeacher phase: ${phase}. Keep the activity short and child-friendly.`;
     const raw = await getTutorResponse(prompt, 'default');
     const current = progress.teacherSession || createTeacherSession('kids_lesson', { lessonId: String(lesson.id), stageId: stage.id });
     const kidsFlow = ['explain', 'model', 'check', 'guided', 'independent', 'review'];
@@ -2288,6 +2288,25 @@ function setupHandlers(bot) {
             const academy = await getAcademyProgress(ctx.from.id);
             const sessionType = academy.session?.type;
             const academyLesson = academy.active ? getAcademyLesson(academy.levelId, academy.lessonNumber) : null;
+            const course = await getCourseProgress(ctx.from.id);
+            const kidsLessonPhase = kids.active && kids.teacherSession?.type === 'kids_lesson'
+                ? normalizeTeacherSession(kids.teacherSession).phase
+                : null;
+            const academyTeacherPhase = academy.active && academyLesson && academy.teacherSession?.type === 'academy_lesson'
+                ? normalizeTeacherSession(academy.teacherSession).phase
+                : null;
+            const courseTeacherPhase = course.active && course.teacherSession?.type === 'course_lesson'
+                ? normalizeTeacherSession(course.teacherSession).phase
+                : null;
+            if (kidsLessonPhase && kidsLessonPhase !== 'independent') {
+                return ctx.reply('ဒီ Kids lesson အဆင့်မှာ အသံဖိုင် မလိုအပ်ပါ။ အောက်က ခလုတ်ကိုနှိပ်ပါ သို့မဟုတ် စာဖြင့် အဖြေတိုပို့ပါ။', kidsLessonKeyboard(kids.teacherSession));
+            }
+            if (academyTeacherPhase && academyTeacherPhase !== 'independent') {
+                return ctx.reply('ဒီသင်ခန်းစာအဆင့်မှာ အသံဖိုင် မလိုအပ်ပါ။ အောက်က ခလုတ်ကိုနှိပ်ပါ သို့မဟုတ် စာဖြင့် အဖြေတိုပို့ပါ။', teacherLessonKeyboard(academy.teacherSession));
+            }
+            if (courseTeacherPhase && courseTeacherPhase !== 'independent') {
+                return ctx.reply('ဒီသင်ခန်းစာအဆင့်မှာ အသံဖိုင် မလိုအပ်ပါ။ အောက်က ခလုတ်ကိုနှိပ်ပါ သို့မဟုတ် စာဖြင့် အဖြေတိုပို့ပါ။', teacherLessonKeyboard(course.teacherSession));
+            }
             const status = await usageOrReply(ctx);
             if (!status) return;
             await ctx.sendChatAction('typing');
@@ -2298,6 +2317,10 @@ function setupHandlers(bot) {
             const buffer = Buffer.from(await response.arrayBuffer());
 
             if (kids.active && kids.teacherSession?.type === 'kids_lesson') {
+                const kidsPhase = normalizeTeacherSession(kids.teacherSession).phase;
+                if (kidsPhase !== 'independent') {
+                    return ctx.reply('ဒီ Kids lesson အဆင့်မှာ အသံဖိုင် မလိုအပ်ပါ။ အောက်က ခလုတ်ကိုနှိပ်ပါ သို့မဟုတ် စာဖြင့် အဖြေတိုပို့ပါ။', kidsLessonKeyboard(kids.teacherSession));
+                }
                 return runKidsVoicePhase(ctx, buffer, ctx.message.voice.mime_type || 'audio/ogg');
             }
 
@@ -2459,6 +2482,10 @@ function setupHandlers(bot) {
 
             if (academy.active && academyLesson && academy.teacherSession?.type === 'academy_lesson') {
                 if (!(await hasAcademyAccess(ctx, academy.levelId))) return;
+                const teacherPhase = normalizeTeacherSession(academy.teacherSession).phase;
+                if (teacherPhase !== 'independent') {
+                    return ctx.reply('ဒီသင်ခန်းစာအဆင့်မှာ အသံဖိုင် မလိုအပ်ပါ။ အောက်က ခလုတ်ကိုနှိပ်ပါ သို့မဟုတ် စာဖြင့် အဖြေတိုပို့ပါ။', teacherLessonKeyboard(academy.teacherSession));
+                }
                 return runTeacherVoicePhase(ctx, buffer, ctx.message.voice.mime_type || 'audio/ogg');
             }
 
@@ -2477,6 +2504,10 @@ function setupHandlers(bot) {
             const progress = await getCourseProgress(ctx.from.id);
             const activeLesson = progress.active ? getBeginnerLesson(progress.currentLesson) : null;
             if (activeLesson && progress.teacherSession?.type === 'course_lesson') {
+                const teacherPhase = normalizeTeacherSession(progress.teacherSession).phase;
+                if (teacherPhase !== 'independent') {
+                    return ctx.reply('ဒီသင်ခန်းစာအဆင့်မှာ အသံဖိုင် မလိုအပ်ပါ။ အောက်က ခလုတ်ကိုနှိပ်ပါ သို့မဟုတ် စာဖြင့် အဖြေတိုပို့ပါ။', teacherLessonKeyboard(progress.teacherSession));
+                }
                 return runTeacherVoicePhase(ctx, buffer, ctx.message.voice.mime_type || 'audio/ogg');
             }
             const currentMode = activeLesson ? 'default' : await getCurrentMode(ctx.from.id);

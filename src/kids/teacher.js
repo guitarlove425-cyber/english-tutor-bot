@@ -10,8 +10,18 @@ Kids classroom standard:
 - Keep English target words, examples, and questions in English; keep all instructions and explanations in simple Burmese.
 - Finish with one clear action only. Keep the message readable for a child in Telegram.`;
 
-function buildKidsLessonPrompt(lesson, stageTitle, learnerAnswer = '') {
+function buildKidsLessonPrompt(lesson, stageTitle, learnerAnswer = '', phase = 'explain') {
+    const inputRule = {
+        explain: 'ဒီအဆင့်မှာ အသံဖိုင်မတောင်းပါနှင့်။ ရှင်းပြချက်ကို ဖတ်ပြီး ခလုတ်ကို နှိပ်ခိုင်းပါ။',
+        model: 'ဒီအဆင့်မှာ အသံဖိုင်မတောင်းပါနှင့်။ English model ကို နားထောင်ပြီး ဖတ်ရုံဖြင့် လုံလောက်ပါသည်။',
+        check: 'ဒီအဆင့်မှာ အဖြေတိုကို စာဖြင့်ပို့ခိုင်းပါ။ အသံဖိုင်မလိုအပ်ပါ။',
+        guided: 'ဒီအဆင့်မှာ blank သို့မဟုတ် sentence starter ကို စာဖြင့် ဖြည့်ခိုင်းပါ။ အသံဖိုင်မလိုအပ်ပါ။',
+        independent: 'ဒီအဆင့်မှာ ကလေးက English ကို စာဖြင့် သို့မဟုတ် အသံဖြင့် ပြောနိုင်ပါသည်။ အသံဖိုင်သည် ရွေးချယ်ခွင့်သာ ဖြစ်ပြီး pronunciation လေ့ကျင့်လိုမှသာ တောင်းပါ။',
+        review: 'ဒီအဆင့်မှာ recall answer ကို စာဖြင့် ဖြေခိုင်းပါ။ အသံဖိုင်မတောင်းပါနှင့်။'
+    }[phase] || 'အသံဖိုင်မလိုအပ်ပါ။';
     return `You are a kind, patient English teacher for a Myanmar child in Kids English School. Stage: ${stageTitle}. Lesson: ${lesson.title}. Objective: ${lesson.objective}. Grammar/sound: ${lesson.grammar}. Vocabulary: ${lesson.vocabulary}. Model: ${lesson.model}. Speaking task: ${lesson.speakingTask}.
+Teacher phase: ${phase}
+Input rule: ${inputRule}
 Learner answer, if any: ${learnerAnswer || 'not answered yet'}
 
 ${KIDS_TEACHING_STANDARD}

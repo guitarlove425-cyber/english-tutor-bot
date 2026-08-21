@@ -194,6 +194,16 @@ Tasks must have unique ids, minutes must be integers from 3 to 20, totalMinutes 
 }
 
 function buildTeacherPhasePrompt(level, lesson, phase, learnerAnswer = '') {
+    const phaseInputGuide = {
+        explain: 'ဒီအဆင့်မှာ အသံဖိုင် မတောင်းပါနှင့်။ Learner ကို ရှင်းပြချက်ဖတ်ပြီး အောက်က next button ကိုနှိပ်ခိုင်းပါ။',
+        model: 'ဒီအဆင့်မှာ အသံဖိုင် မတောင်းပါနှင့်။ Learner က English model ကို ဖတ်နိုင်ပြီး လိုက်နားထောင်နိုင်ရုံဖြင့် လုံလောက်ပါသည်။',
+        check: 'ဒီအဆင့်မှာ စာဖြင့် အဖြေတိုပို့ခိုင်းပါ။ အသံဖိုင် မလိုအပ်ပါ။ အဲဒီအချက်ကို ရှင်းရှင်းပြောပါ။',
+        guided: 'ဒီအဆင့်မှာ sentence starter သို့မဟုတ် blank ကို စာဖြင့် ဖြည့်ခိုင်းပါ။ အသံဖိုင် မလိုအပ်ပါ။',
+        independent: 'ဒီအဆင့်မှာ speaking task ကို စာဖြင့် သို့မဟုတ် အသံဖြင့် ဖြေနိုင်ပါသည်။ Pronunciation စစ်ဆေးရန် လိုအပ်မှသာ အသံဖိုင်ပို့ခိုင်းပါ။',
+        assess: 'ဒီအဆင့်မှာ ယခင် learner evidence ကို အခြေခံပြီး စစ်ဆေးပါ။ အသံဖိုင်ကို သီးခြားတောင်းဆိုခြင်း မပြုပါနှင့်။',
+        homework: 'ဒီအဆင့်မှာ homework ကို စာဖြင့်ရှင်းပြပါ။ Speaking အိမ်စာတွင်သာ အသံဖြင့်လေ့ကျင့်ရန် ရွေးချယ်ခွင့်ပေးပြီး မလိုအပ်လျှင် အသံဖိုင်မတောင်းပါနှင့်။',
+        review: 'ဒီအဆင့်မှာ recall answer ကို စာဖြင့် ဖြေခိုင်းပါ။ Pronunciation review မဟုတ်လျှင် အသံဖိုင် မတောင်းပါနှင့်.'
+    };
     const phaseGuide = {
         explain: 'သင်ခန်းစာရဲ့ ရည်မှန်းချက်ကို အရင်ပြောပါ။ အကြောင်းအရာက ဘာလဲ၊ ဘာကြောင့်လိုအပ်လဲ၊ ဘယ်အချိန်မှာသုံးလဲ၊ sentence pattern ဘယ်လိုလဲဆိုတာကို မြန်မာလို အဆင့်လိုက်ရှင်းပြပါ။ Grammar term သုံးလျှင် ချက်ချင်းအဓိပ္ပာယ်ပြန်ရှင်းပါ။ English ဥပမာ ၂ ခုကို Burmese meaning နှင့် စကားလုံးခွဲပြီး ပြပါ။ Common mistake တစ်ခုကိုလည်း ကြင်နာစွာရှင်းပြပြီး နားလည်မှုစစ်ရန် မေးခွန်းတစ်ခု မေးပါ။',
         model: 'ဆရာက English sentence ၂ ခုကို ဖြည်းဖြည်းပြောသလို ပြပါ။ Sentence တစ်ကြောင်းစီအောက်မှာ Burmese meaning၊ စကားလုံး/phrase တစ်ခုချင်း၏ အလုပ်၊ အသံထွက်နဲ့ stress/rhythm ကိုရှင်းပြပါ။ ထို့နောက် User ကို တစ်ကြောင်းချင်း လိုက်ပြောခိုင်းပြီး ကိုယ်တိုင်ကြည့်စစ်ရန် checklist တစ်ခု ပေးပါ။',
@@ -217,6 +227,7 @@ ${learnerAnswer || '(မဖြေရသေးပါ)'}
 ${DETAILED_TEACHING_STANDARD}
 
 ${phaseGuide[phase] || phaseGuide.explain}
+Input rule for this phase: ${phaseInputGuide[phase] || phaseInputGuide.explain}
 Write all explanations, action instructions, hints, feedback, homework, and review directions in Burmese. Keep target English sentences, questions, examples, and corrected English in English. Use headings and short numbered sections so a complete beginner can follow. Do not skip the teaching step. Finish with exactly one clear next action for the learner. Return a warm, detailed but Telegram-readable classroom-teacher response. Do not say the lesson is mastered unless the learner has demonstrated it.`;
 }
 
