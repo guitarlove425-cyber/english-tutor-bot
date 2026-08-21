@@ -263,10 +263,10 @@ test('feature task banks stay separate from the core sequence', () => {
     const features = ['quiz', 'coach', 'dailyPlan', 'wordReview', 'pronunciation', 'liveVoice', 'roleplay', 'diagnostic', 'project'];
     for (const feature of features) {
         assert.ok(Array.isArray(FEATURE_TASKS[feature]));
-        assert.equal(FEATURE_TASKS[feature].length, 6);
+        assert.equal(FEATURE_TASKS[feature].length, 12);
         assert.ok(getFeatureTask(feature, 'starter').task);
     }
-    assert.deepEqual(featureCoverage(), Object.fromEntries(features.map((feature) => [feature, 6])));
+    assert.deepEqual(featureCoverage(), Object.fromEntries(features.map((feature) => [feature, 12])));
     const taskTitles = features.map((feature) => getFeatureTask(feature, 'intermediate').title);
     assert.equal(new Set(taskTitles).size, taskTitles.length);
 });
