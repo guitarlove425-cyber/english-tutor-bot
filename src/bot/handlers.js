@@ -169,6 +169,19 @@ async function sendEnglishVoiceReply(ctx, text) {
     }
 }
 
+async function pronunciationReply(ctx, text, keyboard) {
+    const english = normalizeTelegramText(text).replace(/[^\x00-\x7F]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!english) {
+        return ctx.reply('အသံထွက်နားထောင်ရန် English စကားလုံး သို့မဟုတ် ဝါကျကို စာဖြင့်ပို့ပါ။ ဥပမာ: comfortable');
+    }
+    await ctx.reply(`🔊 နားထောင်ရန်: ${english}`);
+    const sent = await sendEnglishVoiceReply(ctx, english);
+    if (!sent) {
+        await ctx.reply('🙏 ဒီစကားလုံးအသံကို အခုမပို့နိုင်သေးပါ။ ခဏနေပြီး 🔊 အသံထွက်ခလုတ်ကို ပြန်နှိပ်ပါ။');
+    }
+    return ctx.reply('သင်ခန်းစာကို ဆက်ရန် အောက်က လက်ရှိအဆင့်ခလုတ်ကို နှိပ်ပါ။', keyboard);
+}
+
 async function usageOrReply(ctx) {
     const status = await checkUsageLimit(ctx.from.id);
     if (!status.allowed) {
@@ -197,6 +210,7 @@ function teacherLessonKeyboard(session) {
     };
     const [label, callback] = actions[current.phase] || actions.explain;
     const rows = [[Markup.button.callback(label, callback)]];
+    rows.push([Markup.button.callback('🔊 မသိတဲ့စာလုံး အသံထွက်နားထောင်မယ်', 'lesson_pronounce')]);
     if (current.phase === 'review') rows.push([Markup.button.callback('➡️ နောက် Lesson သွားမယ်', 'teacher_phase_next')]);
     rows.push([Markup.button.callback('🏠 သင်ခန်းစာရပ်ပြီး Home သွားမယ်', 'teacher_home')]);
     return Markup.inlineKeyboard(rows);
@@ -267,6 +281,7 @@ function kidsLessonKeyboard(session = {}) {
     };
     const [label, callback] = actions[phase] || actions.explain;
     const rows = [[Markup.button.callback(label, callback)]];
+    rows.push([Markup.button.callback('🔊 မသိတဲ့စာလုံး အသံထွက်နားထောင်မယ်', 'lesson_pronounce')]);
     if (phase === 'independent' || phase === 'review') rows.push([Markup.button.callback('➡️ နောက် Kids Lesson', 'kids_next')]);
     rows.push([Markup.button.callback('📊 တိုးတက်မှု', 'kids_progress')], [Markup.button.callback('🏠 Home', 'menu')]);
     return Markup.inlineKeyboard(rows);
@@ -1361,6 +1376,25 @@ function setupHandlers(bot) {
         await ctx.answerCbQuery();
         return ctx.reply('🏠 ပင်မ Menu', mainKeyboard(ctx.from.id));
     });
+    bot.action('lesson_pronounce', async (ctx) => {
+        await ctx.answerCbQuery();
+        const kids = await getKidsProgress(ctx.from.id);
+        if (kids.active && kids.teacherSession?.type === 'kids_lesson') {
+            await saveKidsProgress(ctx.from.id, { ...kids, pronunciationRequest: true });
+            return ctx.reply('🔊 အသံထွက်နားထောင်ရန် မသိတဲ့ English စကားလုံး သို့မဟုတ် ဝါကျကို စာဖြင့်ပို့ပါ။ ဥပမာ: comfortable');
+        }
+        const academy = await getAcademyProgress(ctx.from.id);
+        if (academy.active && academy.teacherSession?.type === 'academy_lesson') {
+            await saveAcademyProgress(ctx.from.id, { ...academy, pronunciationRequest: true });
+            return ctx.reply('🔊 အသံထွက်နားထောင်ရန် မသိတဲ့ English စကားလုံး သို့မဟုတ် ဝါကျကို စာဖြင့်ပို့ပါ။ ဥပမာ: comfortable');
+        }
+        const course = await getCourseProgress(ctx.from.id);
+        if (course.active && course.teacherSession?.type === 'course_lesson') {
+            await saveCourseProgress(ctx.from.id, { ...course, pronunciationRequest: true });
+            return ctx.reply('🔊 အသံထွက်နားထောင်ရန် မသိတဲ့ English စကားလုံး သို့မဟုတ် ဝါကျကို စာဖြင့်ပို့ပါ။ ဥပမာ: comfortable');
+        }
+        return ctx.reply('အသံထွက်နားထောင်ရန် သင်ခန်းစာတစ်ခုကို အရင်စတင်ပါ။');
+    });
 
     async function selectMode(ctx, mode, message) {
         try {
@@ -2058,6 +2092,19 @@ function setupHandlers(bot) {
                 classroomKeyboard,
                 homeKeyboard: mainKeyboard
             })) return;
+            if (kids.pronunciationRequest && kids.active && kids.teacherSession?.type === 'kids_lesson') {
+                await saveKidsProgress(ctx.from.id, { ...kids, pronunciationRequest: false });
+                return pronunciationReply(ctx, userMessage, kidsLessonKeyboard(kids.teacherSession));
+            }
+            if (academy.pronunciationRequest && academy.active && academy.teacherSession?.type === 'academy_lesson') {
+                await saveAcademyProgress(ctx.from.id, { ...academy, pronunciationRequest: false });
+                return pronunciationReply(ctx, userMessage, teacherLessonKeyboard(academy.teacherSession));
+            }
+            const course = await getCourseProgress(ctx.from.id);
+            if (course.pronunciationRequest && course.active && course.teacherSession?.type === 'course_lesson') {
+                await saveCourseProgress(ctx.from.id, { ...course, pronunciationRequest: false });
+                return pronunciationReply(ctx, userMessage, teacherLessonKeyboard(course.teacherSession));
+            }
             const sessionType = academy.session?.type;
             const academyLesson = academy.active ? getAcademyLesson(academy.levelId, academy.lessonNumber) : null;
             const status = await usageOrReply(ctx);

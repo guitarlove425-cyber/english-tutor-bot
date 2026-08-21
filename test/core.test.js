@@ -435,4 +435,5 @@ test('Academy Telegram handlers register all public flows', () => {
     assert.ok(registered.actions.some((action) => String(action).includes('kids_age')));
     assert.ok(registered.actions.some((action) => String(action).includes('teacher_homework')));
     assert.ok(registered.actions.includes('teacher_home'));
+    assert.ok(registered.actions.includes('lesson_pronounce'));
 });
