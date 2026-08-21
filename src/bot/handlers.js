@@ -154,13 +154,21 @@ async function getCurrentMode(userId) {
 
 function teacherLessonKeyboard(session) {
     const current = normalizeTeacherSession(session);
-    return Markup.inlineKeyboard([
-        [Markup.button.callback('📖 ဆရာရှင်းပြချက်', 'teacher_phase_explain'), Markup.button.callback('🔊 ဥပမာပြရန်', 'teacher_phase_model')],
-        [Markup.button.callback('🧪 နားလည်မှုစစ်ရန်', 'teacher_phase_check'), Markup.button.callback('✍️ အကူအညီဖြင့်လေ့ကျင့်ရန်', 'teacher_phase_guided')],
-        [Markup.button.callback('🗣️ ကိုယ်တိုင်ပြောရန်', 'teacher_phase_independent')],
-        [Markup.button.callback('📝 အကဲဖြတ်ရန်', 'teacher_phase_assess'), Markup.button.callback('🏠 အိမ်စာ', 'teacher_phase_homework')],
-        [Markup.button.callback('🔁 ပြန်လေ့ကျင့်ရန်', 'teacher_phase_review'), Markup.button.callback('➡️ နောက်အဆင့်', 'teacher_phase_next')]
-    ]);
+    const actions = {
+        explain: ['📖 ဆရာရှင်းပြချက် ဆက်ကြည့်မယ်', 'teacher_phase_explain'],
+        model: ['🔊 ဥပမာနားထောင်မယ်', 'teacher_phase_model'],
+        check: ['🧪 နားလည်မှု စစ်မယ်', 'teacher_phase_check'],
+        guided: ['✍️ အကူအညီနဲ့ လေ့ကျင့်မယ်', 'teacher_phase_guided'],
+        independent: ['🗣️ ကိုယ်တိုင်ပြော/ရေးမယ်', 'teacher_phase_independent'],
+        assess: ['📝 ဆရာ့အကဲဖြတ်ချက်ယူမယ်', 'teacher_phase_assess'],
+        homework: ['🏠 အိမ်စာယူမယ်', 'teacher_phase_homework'],
+        review: ['🔁 Review ပြန်လုပ်မယ်', 'teacher_phase_review']
+    };
+    const [label, callback] = actions[current.phase] || actions.explain;
+    const rows = [[Markup.button.callback(label, callback)]];
+    if (current.phase === 'review') rows.push([Markup.button.callback('➡️ နောက် Lesson သွားမယ်', 'teacher_phase_next')]);
+    rows.push([Markup.button.callback('🏠 သင်ခန်းစာရပ်ပြီး Home သွားမယ်', 'teacher_home')]);
+    return Markup.inlineKeyboard(rows);
 }
 
 function homeworkKeyboard(items = []) {
@@ -216,13 +224,21 @@ function kidsAgeKeyboard() {
     ]);
 }
 
-function kidsLessonKeyboard() {
-    return Markup.inlineKeyboard([
-        [Markup.button.callback('📖 ဆရာရှင်းပြမယ်', 'kids_phase_explain'), Markup.button.callback('🔊 အသံနမူနာ', 'kids_phase_model')],
-        [Markup.button.callback('🧪 နားလည်မှုစစ်မယ်', 'kids_phase_check'), Markup.button.callback('🗣️ ကိုယ်တိုင်ပြောမယ်', 'kids_phase_speak')],
-        [Markup.button.callback('🔁 ပြန်လေ့ကျင့်မယ်', 'kids_phase_review'), Markup.button.callback('➡️ နောက် Lesson', 'kids_next')],
-        [Markup.button.callback('📊 တိုးတက်မှု', 'kids_progress'), Markup.button.callback('🏠 ပင်မ Menu', 'menu')]
-    ]);
+function kidsLessonKeyboard(session = {}) {
+    const phase = normalizeTeacherSession(session).phase;
+    const actions = {
+        explain: ['📖 ဆရာရှင်းပြမယ်', 'kids_phase_explain'],
+        model: ['🔊 အသံနမူနာနားထောင်မယ်', 'kids_phase_model'],
+        check: ['🧪 နားလည်မှု စစ်မယ်', 'kids_phase_check'],
+        guided: ['✍️ အကူအညီနဲ့ လေ့ကျင့်မယ်', 'kids_phase_speak'],
+        independent: ['🗣️ ကိုယ်တိုင်ပြောမယ်', 'kids_phase_speak'],
+        review: ['🔁 ပြန်လေ့ကျင့်မယ်', 'kids_phase_review']
+    };
+    const [label, callback] = actions[phase] || actions.explain;
+    const rows = [[Markup.button.callback(label, callback)]];
+    if (phase === 'independent' || phase === 'review') rows.push([Markup.button.callback('➡️ နောက် Kids Lesson', 'kids_next')]);
+    rows.push([Markup.button.callback('📊 တိုးတက်မှု', 'kids_progress')], [Markup.button.callback('🏠 Home', 'menu')]);
+    return Markup.inlineKeyboard(rows);
 }
 
 function kidsProgressMessage(progress) {
@@ -243,7 +259,8 @@ async function sendKidsLesson(ctx, progress) {
         : createTeacherSession('kids_lesson', { lessonId: String(lesson.id), stageId: stage.id, phase: 'explain' });
     const updated = await saveKidsProgress(ctx.from.id, { ...progress, teacherSession: session });
     await replyLongText(ctx, `🧒 ${stage.title}\nLesson ${lesson.id}/${KIDS_COURSE.length}: ${lesson.title}\n\nရည်မှန်းချက်: ${lesson.objective}\n\nEnglish model:\n${lesson.model}\n\nဒီနေ့လေ့ကျင့်ရန်: ${lesson.speakingTask}\n\nသင်ခန်းစာအချိန်: ${lesson.minutes} မိနစ်`);
-    return ctx.reply('ကလေးက အောက်ကခလုတ်နဲ့ ဆရာ့အဆင့်ကို တစ်ဆင့်ချင်း လုပ်ပါ။', kidsLessonKeyboard(), updated);
+    await ctx.reply('ကလေးက အခု ဆရာရှင်းပြချက်ကို စတင်ပါ။ ခလုတ်တစ်ခုကိုသာ နှိပ်ပါ။', Markup.removeKeyboard());
+    return ctx.reply('တစ်ဆင့်ပြီးမှ တစ်ဆင့်သာ ဆက်သွားပါမယ်။', kidsLessonKeyboard(updated.teacherSession), updated);
 }
 
 function kidsEvidenceScore(phase, learnerAnswer = '', isVoice = false) {
@@ -266,12 +283,22 @@ async function runKidsPhase(ctx, requestedPhase = 'explain', learnerAnswer = '')
         : buildKidsLessonPrompt(lesson, stage.title, learnerAnswer) + `\nTeacher phase: ${phase}. Keep the activity short and child-friendly.`;
     const raw = await getTutorResponse(prompt, 'default');
     const current = progress.teacherSession || createTeacherSession('kids_lesson', { lessonId: String(lesson.id), stageId: stage.id });
-    const nextSession = { ...current, type: 'kids_lesson', lessonId: String(lesson.id), stageId: stage.id, phase, attempts: Number(current.attempts || 0) + (learnerAnswer ? 1 : 0), lastAnswer: learnerAnswer || current.lastAnswer || null };
+    const kidsFlow = ['explain', 'model', 'check', 'guided', 'independent', 'review'];
+    const flowIndex = Math.max(0, kidsFlow.indexOf(phase));
+    const nextPhase = kidsFlow[Math.min(flowIndex + 1, kidsFlow.length - 1)];
+    const nextSession = advanceTeacherSession(current, nextPhase, {
+        type: 'kids_lesson',
+        lessonId: String(lesson.id),
+        stageId: stage.id,
+        attempts: Number(current.attempts || 0) + (learnerAnswer ? 1 : 0),
+        lastAnswer: learnerAnswer || current.lastAnswer || null
+    });
     const score = kidsEvidenceScore(phase, learnerAnswer);
     const lessonMastery = score > 0 ? recordLessonEvidence(progress.lessonMastery || {}, 'kids', lesson.id, { score, checkPassed: phase === 'check' && Boolean(learnerAnswer), remediation: [] }) : (progress.lessonMastery || {});
     const updated = await saveKidsProgress(ctx.from.id, { ...progress, teacherSession: nextSession, lessonMastery, practiceAttempts: Number(progress.practiceAttempts || 0) + (learnerAnswer ? 1 : 0), speakingAttempts: Number(progress.speakingAttempts || 0) + (phase === 'independent' ? 1 : 0), points: Number(progress.points || 0) + (score ? 3 : 0) });
     await replyLongText(ctx, `👩‍🏫 ${stage.title} — ${lesson.title}\n\n${raw}`);
-    return ctx.reply('ကလေးက အခုလုပ်ရမယ့်အဆင့်ကို ရွေးပါ။', kidsLessonKeyboard(), updated);
+    await ctx.reply('အခုလုပ်ပြီး နောက်တစ်ဆင့်ကို ဆက်သွားရန် အောက်က ခလုတ်တစ်ခုကိုသာ နှိပ်ပါ။', Markup.removeKeyboard());
+    return ctx.reply('ဆရာနဲ့အတူ တစ်ဆင့်ချင်း ဆက်လုပ်ပါမယ်။', kidsLessonKeyboard(nextSession));
 }
 
 async function runKidsVoicePhase(ctx, buffer, mimeType = 'audio/ogg') {
@@ -281,11 +308,13 @@ async function runKidsVoicePhase(ctx, buffer, mimeType = 'audio/ogg') {
     const stage = getKidsStage(lesson.stageId);
     const raw = await getTutorResponseFromAudio(buffer, mimeType, 'default', buildKidsVoicePrompt(lesson, stage.title));
     const current = progress.teacherSession || createTeacherSession('kids_lesson', { lessonId: String(lesson.id), stageId: stage.id });
-    const nextSession = { ...current, type: 'kids_lesson', lessonId: String(lesson.id), stageId: stage.id, phase: 'independent', attempts: Number(current.attempts || 0) + 1, lastVoiceAt: new Date().toISOString() };
+    const nextSession = advanceTeacherSession(current, 'review', { type: 'kids_lesson', lessonId: String(lesson.id), stageId: stage.id, attempts: Number(current.attempts || 0) + 1, lastVoiceAt: new Date().toISOString() });
     const lessonMastery = recordLessonEvidence(progress.lessonMastery || {}, 'kids', lesson.id, { score: 75, remediation: [] });
     const updated = await saveKidsProgress(ctx.from.id, { ...progress, teacherSession: nextSession, lessonMastery, speakingAttempts: Number(progress.speakingAttempts || 0) + 1, practiceAttempts: Number(progress.practiceAttempts || 0) + 1, points: Number(progress.points || 0) + 5 });
     await replyLongText(ctx, `👩‍🏫 Kids Voice Feedback — ${lesson.title}\n\n${raw}`);
     await sendEnglishVoiceReply(ctx, raw);
+    await ctx.reply('အသံလေ့ကျင့်ခန်းပြီးပါပြီ။ နောက်တစ်ဆင့်ကို ဆက်လုပ်ရန်:', Markup.removeKeyboard());
+    await ctx.reply('ဆရာနဲ့အတူ တစ်ဆင့်ချင်း ဆက်လုပ်ပါမယ်။', kidsLessonKeyboard(nextSession));
     return updated;
 }
 
@@ -313,31 +342,32 @@ async function runTeacherPhase(ctx, requestedPhase = 'explain', learnerAnswer = 
     if (!context) return ctx.reply('သင်ခန်းစာဆရာစနစ် စတင်ရန် /academy သို့မဟုတ် /course ကို အရင်နှိပ်ပါ။');
     const fallbackType = context.kind === 'academy' ? 'academy_lesson' : 'course_lesson';
     const current = normalizeTeacherSession(context.progress.teacherSession, fallbackType);
-    const phase = requestedPhase === 'next' ? null : requestedPhase;
-    const raw = await getTutorResponse(buildTeacherPhasePrompt(context.level, context.lesson, phase || current.phase, learnerAnswer), 'default');
-    const next = advanceTeacherSession(current, phase, {
+    const requested = requestedPhase === 'next' ? null : requestedPhase;
+    const activePhase = requested && requested === current.phase ? requested : current.phase;
+    const raw = await getTutorResponse(buildTeacherPhasePrompt(context.level, context.lesson, activePhase, learnerAnswer), 'default');
+    const next = advanceTeacherSession(current, null, {
         lessonId: String(context.lesson.id || context.lesson.number),
         attempts: current.attempts + (learnerAnswer ? 1 : 0),
-        checksPassed: phase === 'check' ? current.checksPassed + 1 : current.checksPassed,
+        checksPassed: activePhase === 'check' ? current.checksPassed + 1 : current.checksPassed,
         lastAnswer: learnerAnswer || current.lastAnswer || null
     });
     const position = masteryPosition(context);
-    const evidenceScore = masteryEvidenceScore(phase || current.phase, learnerAnswer);
+    const evidenceScore = masteryEvidenceScore(activePhase, learnerAnswer);
     const lessonMastery = evidenceScore > 0 || phase === 'check'
         ? recordLessonEvidence(context.progress.lessonMastery || {}, position.levelId, position.lessonNumber, {
             score: evidenceScore,
-            checkPassed: phase === 'check' && Boolean(String(learnerAnswer || '').trim()),
+            checkPassed: activePhase === 'check' && Boolean(String(learnerAnswer || '').trim()),
             remediation: weakSkills(context.progress)
         })
         : (context.progress.lessonMastery || {});
-    const isHomework = next.phase === 'homework';
+    const isHomework = activePhase === 'homework';
     const homework = isHomework
         ? assignHomework([
             { id: `${fallbackType}_${context.lesson.id}_speaking`, title: 'Speaking အိမ်စာ', instructions: `${context.lesson.speakingTask || 'ဒီနေ့သင်ခန်းစာအကြောင်းကို English ဖြင့် ၁ မိနစ်ပြောပါ။'}`, dueDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10) },
             { id: `${fallbackType}_${context.lesson.id}_review`, title: 'Vocabulary/Grammar ပြန်လေ့ကျင့်ရန်', instructions: `ဒီ lesson ရဲ့ vocabulary နဲ့ grammar ကို ပြန်လေ့လာပြီး English ဝါကျ ၅ ကြောင်းရေးပါ။`, dueDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10) }
         ], new Date(Date.now() + 86400000).toISOString().slice(0, 10))
         : (context.progress.homework || []);
-    const reviewQueue = next.phase === 'homework'
+    const reviewQueue = activePhase === 'homework'
         ? scheduleReview(context.progress.reviewQueue || [], { id: String(context.lesson.id || context.lesson.number), title: context.lesson.title, reason: 'နောက် lesson မစမီ ဒီ lesson ကို ပြန်နွေးရန်' })
         : (context.progress.reviewQueue || []);
     const updated = await saveTeacherContext(ctx, context, {
@@ -348,8 +378,8 @@ async function runTeacherPhase(ctx, requestedPhase = 'explain', learnerAnswer = 
         lessonMastery
     });
     await replyLongText(ctx, `👩‍🏫 ${teacherPhaseMessage(next)}\n\n${raw}`);
-    await ctx.reply('အောက်ကခလုတ်နဲ့ နောက်တစ်ဆင့်ကို ဆက်လုပ်ပါ။', teacherLessonKeyboard(next));
-    await ctx.reply('အခြားလေ့ကျင့်မှုများကို ရွေးချယ်ရန် Academy menu ကို အသုံးပြုပါ။', academyKeyboard());
+    await ctx.reply('အခု ဆရာပြထားတဲ့အဆင့်ကို လုပ်ပြီး အောက်က ခလုတ်တစ်ခုကိုသာ နှိပ်ပါ။', Markup.removeKeyboard());
+    await ctx.reply('နောက်တစ်ဆင့်ကို ဆက်လုပ်ရန်:', teacherLessonKeyboard(next));
     return updated;
 }
 
@@ -377,8 +407,8 @@ async function runTeacherVoicePhase(ctx, buffer, mimeType = 'audio/ogg') {
     });
     await replyLongText(ctx, `👩‍🏫 ${teacherPhaseMessage(next)}\n\n${raw}`);
     await sendEnglishVoiceReply(ctx, raw);
-    await ctx.reply('အောက်ကခလုတ်နဲ့ နောက်တစ်ဆင့်ကို ဆက်လုပ်ပါ။', teacherLessonKeyboard(next));
-    await ctx.reply('အခြားလေ့ကျင့်မှုများကို ရွေးချယ်ရန် Academy menu ကို အသုံးပြုပါ။', academyKeyboard());
+    await ctx.reply('အခု ဆရာပြထားတဲ့အဆင့်ကို လုပ်ပြီး အောက်က ခလုတ်တစ်ခုကိုသာ နှိပ်ပါ။', Markup.removeKeyboard());
+    await ctx.reply('နောက်တစ်ဆင့်ကို ဆက်လုပ်ရန်:', teacherLessonKeyboard(next));
     return updated;
 }
 
@@ -391,8 +421,8 @@ async function sendCurrentLesson(ctx, progress) {
     const updated = await saveCourseProgress(ctx.from.id, { ...progress, teacherSession });
     await replyLongText(ctx, buildLessonIntro(lesson, BEGINNER_COURSE.length));
     await sendEnglishVoiceReply(ctx, lesson.examples.join('. '));
-    await ctx.reply('👩‍🏫 အခု ဆရာဦးဆောင်သင်ကြားမည့်အဆင့်ကို အောက်ကခလုတ်မှ ရွေးပါ။', teacherLessonKeyboard(updated.teacherSession));
-    await ctx.reply('အခြား Beginner Course လုပ်ဆောင်ချက်များကို ရွေးချယ်ရန် အောက်က Beginner ခလုတ်များကို အသုံးပြုပါ။', courseKeyboard());
+    await ctx.reply('👩‍🏫 ပထမဆုံး ဆရာရှင်းပြချက်ကို စတင်ရန် အောက်ကခလုတ်တစ်ခုကို နှိပ်ပါ။', Markup.removeKeyboard());
+    await ctx.reply('တစ်ဆင့်ပြီးမှ တစ်ဆင့်သာ ဆက်သွားပါမယ်။', teacherLessonKeyboard(updated.teacherSession));
 }
 
 function courseProgressMessage(progress) {
@@ -458,7 +488,8 @@ async function sendAcademyLesson(ctx, progress) {
     });
     await replyLongText(ctx, buildAcademyLessonIntro(lesson, level, level.lessons.length));
     await sendEnglishVoiceReply(ctx, `${lesson.title}. ${lesson.objective}. ${lesson.grammar}.`);
-    await ctx.reply('👩‍🏫 အခု ဆရာဦးဆောင်သင်ကြားမည့်အဆင့်ကို အောက်ကခလုတ်မှ ရွေးပါ။', teacherLessonKeyboard(updated.teacherSession));
+    await ctx.reply('👩‍🏫 ပထမဆုံး ဆရာရှင်းပြချက်ကို စတင်ရန် အောက်ကခလုတ်တစ်ခုကို နှိပ်ပါ။', Markup.removeKeyboard());
+    await ctx.reply('တစ်ဆင့်ပြီးမှ တစ်ဆင့်သာ ဆက်သွားပါမယ်။', teacherLessonKeyboard(updated.teacherSession));
 }
 
 function parseJsonResponse(text) {
@@ -1260,7 +1291,7 @@ function setupHandlers(bot) {
             return sendKidsLesson(ctx, progress);
         });
     }
-    bot.action(/^kids_phase_(explain|model|check|speak|review)$/, async (ctx) => {
+    bot.action(/^kids_phase_(explain|model|check|guided|speak|review)$/, async (ctx) => {
         try {
             await ctx.answerCbQuery();
             return runKidsPhase(ctx, ctx.match[1]);
@@ -1276,7 +1307,7 @@ function setupHandlers(bot) {
             const lesson = getKidsLesson(progress.lessonNumber);
             if (!lesson) return ctx.reply('🎉 Kids English School ကို ပြီးမြောက်ပါပြီ။', kidsReplyKeyboard());
             if (!canAdvanceLesson(progress, 'kids', lesson.id)) {
-                return ctx.reply(`ဒီ Lesson ကို မကျွမ်းသေးပါ။\n\n${lesson.objective}\n\n📖 ဆရာရှင်းပြမယ်၊ 🧪 နားလည်မှုစစ်မယ်၊ 🗣️ ကိုယ်တိုင်ပြောမယ်၊ 🔁 ပြန်လေ့ကျင့်မယ် ကို အရင်လုပ်ပါ။`, kidsLessonKeyboard());
+                return ctx.reply(`ဒီ Lesson ကို မကျွမ်းသေးပါ။\n\n${lesson.objective}\n\nဆရာက အဆင့်လိုက် ပြန်လေ့ကျင့်ပေးပါမယ်။ အောက်က ခလုတ်တစ်ခုကိုသာ နှိပ်ပြီး ဆက်လုပ်ပါ။`, kidsLessonKeyboard(progress.teacherSession));
             }
             const completedLessons = [...new Set([...(progress.completedLessons || []), lesson.id])].sort((a, b) => a - b);
             const updated = await saveKidsProgress(ctx.from.id, { ...progress, completedLessons, lessonNumber: lesson.id + 1, teacherSession: null, points: Number(progress.points || 0) + 15 });
@@ -1292,6 +1323,10 @@ function setupHandlers(bot) {
         return ctx.reply(kidsProgressMessage(progress), kidsReplyKeyboard());
     });
     bot.action('menu', async (ctx) => {
+        await ctx.answerCbQuery();
+        return ctx.reply('🏠 ပင်မ Menu', mainKeyboard(ctx.from.id));
+    });
+    bot.action('teacher_home', async (ctx) => {
         await ctx.answerCbQuery();
         return ctx.reply('🏠 ပင်မ Menu', mainKeyboard(ctx.from.id));
     });
@@ -1656,7 +1691,13 @@ function setupHandlers(bot) {
     bot.action(/^teacher_phase_(explain|model|check|guided|independent|assess|homework|review|next)$/, async (ctx) => {
         try {
             await ctx.answerCbQuery();
-            await runTeacherPhase(ctx, ctx.match[1]);
+            const action = ctx.match[1];
+            if (action === 'next') {
+                const context = await getTeacherContext(ctx);
+                if (!context) return ctx.reply('နောက် Lesson သွားရန် သင်တန်းကို အရင်စတင်ပါ။');
+                return bot.handleUpdate(commandUpdate(ctx, context.kind === 'academy' ? '/nextacademylesson' : '/nextlesson'));
+            }
+            await runTeacherPhase(ctx, action);
         } catch (error) {
             console.error('Teacher phase error:', error.stack || error.message);
             const message = error.message === 'API_ERROR'
