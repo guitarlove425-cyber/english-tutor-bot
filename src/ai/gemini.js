@@ -1,5 +1,6 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { config } = require('../config');
+const { recordRequest, recordSuccess, recordFailure, recordFallback } = require('../ops/metrics');
 
 if (!config.GEMINI_API_KEY) {
     console.warn('⚠️ GEMINI_API_KEY is not configured. AI requests will fail until it is added.');
@@ -72,18 +73,22 @@ function logGeminiError(operation, modelName, error, retrying = false) {
 }
 
 async function generateWithRecovery(mode, operation, requestFactory) {
+    recordRequest();
     let lastError = null;
-    for (const modelName of modelCandidates()) {
+    for (const [modelIndex, modelName] of modelCandidates().entries()) {
+        if (modelIndex > 0) recordFallback();
         const model = getModel(mode, modelName);
         for (let attempt = 0; attempt <= MAX_RETRIES_PER_MODEL; attempt += 1) {
             try {
                 const result = await requestFactory(model);
+                recordSuccess(modelName, operation);
                 return result.response.text().trim();
             } catch (error) {
                 lastError = error;
                 const transient = isTransientError(error);
                 const retrying = transient && attempt < MAX_RETRIES_PER_MODEL;
                 logGeminiError(operation, modelName, error, retrying);
+                recordFailure(operation, modelName, errorStatus(error), transient);
                 if (!transient) break;
                 if (retrying) await sleep(retryDelayMs(attempt));
             }

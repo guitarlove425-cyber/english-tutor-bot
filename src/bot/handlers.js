@@ -55,6 +55,8 @@ const {
     weakSkills
 } = require('../academy/learning');
 const { TRACKS, getTrack, trackIsPremium } = require('../academy/tracks');
+const { DIAGNOSTIC_QUESTIONS, normalizeDiagnosticState, startDiagnostic, diagnosticQuestion, recordDiagnosticAnswer, diagnosticSummary } = require('../academy/diagnostics');
+const { PROJECTS, normalizeProjectState, projectForLevel, getProject, startProject, recordProjectSubmission, projectReadiness, projectSummary } = require('../academy/projects');
 const {
     buildAcademyLessonIntro,
     buildPlacementPrompt,
@@ -78,6 +80,7 @@ const {
     buildOrchestratorPrompt,
     buildErrorClinicPrompt,
     buildConversationLadderPrompt,
+    buildProjectPrompt,
     buildAssessmentPrompt
 } = require('../academy/teacher');
 const {
@@ -734,6 +737,7 @@ const BUTTONS = {
         review: '🔁 Kids Review',
         stages: '📚 Kids အဆင့်များ',
         menu: '🧒 Kids Menu',
+        guardian: '👨‍👩‍👧 လူကြီးအကျဉ်းချုပ်',
         home: '🏠 ပင်မ Menu'
     },
     privacy: {
@@ -773,6 +777,8 @@ const BUTTONS = {
         certificate: '🏆 Certificate',
         errorClinic: '🩺 အမှားပြန်သင်ခန်းစာ',
         conversation: '🗣️ စကားပြောလှေကား',
+        diagnostic: '🧭 အခြေခံစစ်ဆေးမှု',
+        projects: '🎯 Real-life Project',
         home: '🏠 ပင်မ Menu'
     }
 };
@@ -844,6 +850,7 @@ function practiceKeyboard() {
         [BUTTONS.academy.pronunciation, BUTTONS.academy.wordBank],
         [BUTTONS.academy.quiz, BUTTONS.academy.errorClinic],
         [BUTTONS.academy.liveVoice, BUTTONS.academy.assessment],
+        [BUTTONS.academy.diagnostic, BUTTONS.academy.projects],
         [BUTTONS.main.home]
     ]).resize().persistent();
 }
@@ -878,8 +885,8 @@ function kidsReplyKeyboard() {
     return Markup.keyboard([
         [BUTTONS.kids.lesson, BUTTONS.kids.practice],
         [BUTTONS.kids.review, BUTTONS.kids.progress],
-        [BUTTONS.kids.stages, BUTTONS.kids.menu],
-        [BUTTONS.main.home]
+        [BUTTONS.kids.stages, BUTTONS.kids.guardian],
+        [BUTTONS.kids.menu, BUTTONS.main.home]
     ]).resize().persistent();
 }
 
@@ -887,7 +894,8 @@ function kidsPracticeKeyboard() {
     return Markup.keyboard([
         [BUTTONS.kids.lesson, BUTTONS.kids.review],
         [BUTTONS.kids.progress, BUTTONS.kids.stages],
-        [BUTTONS.kids.menu, BUTTONS.main.home]
+        [BUTTONS.kids.guardian, BUTTONS.kids.menu],
+        [BUTTONS.main.home]
     ]).resize().persistent();
 }
 
@@ -976,12 +984,15 @@ function setupButtonRouting(bot) {
         [BUTTONS.academy.certificate, '/academycertificate'],
         [BUTTONS.academy.errorClinic, '/errorclinic'],
         [BUTTONS.academy.conversation, '/conversation'],
+        [BUTTONS.academy.diagnostic, '/diagnostic'],
+        [BUTTONS.academy.projects, '/projects'],
         [BUTTONS.academy.home, '/menu'],
         [BUTTONS.kids.lesson, '/kidslesson'],
         [BUTTONS.kids.practice, '/kidspractice'],
         [BUTTONS.kids.progress, '/kidsprogress'],
         [BUTTONS.kids.review, '/kidsreview'],
         [BUTTONS.kids.stages, '/kidsstages'],
+        [BUTTONS.kids.guardian, '/kidsguardian'],
         [BUTTONS.kids.menu, '/kidsmenu'],
         [BUTTONS.privacy.export, '/exportdata'],
         [BUTTONS.privacy.delete, '/deletedata'],
@@ -1033,13 +1044,55 @@ function recommendationMessage(recommendation) {
     return `🧭 ဒီနေ့အတွက် ဆရာ့အကြံပြုချက်\n\nအခုလေ့ကျင့်သင့်တာ: ${recommendation.mode}\nဘာကြောင့်လဲ: ${recommendation.reason}\n\nလုပ်ရမယ့်အလုပ်:\n${recommendation.action}\n\nအားနည်းနိုင်သော skill: ${(recommendation.weakSkills || []).join(', ') || 'အထူးအားနည်းချက် မတွေ့သေးပါ။'}`;
 }
 
+function diagnosticKeyboard() {
+    return Markup.inlineKeyboard([
+        [Markup.button.callback('▶️ စစ်ဆေးမှု စတင်မယ်', 'diagnostic_start')],
+        [Markup.button.callback('🏠 ပင်မ Menu', 'menu')]
+    ]);
+}
+
+function diagnosticAnswerKeyboard() {
+    return Markup.inlineKeyboard([
+        [Markup.button.callback('⏭️ ဒီမေးခွန်းကို ကျော်မယ်', 'diagnostic_skip')],
+        [Markup.button.callback('❌ ရပ်မယ်', 'diagnostic_cancel')]
+    ]);
+}
+
+function diagnosticMessage(state) {
+    const summary = diagnosticSummary(state);
+    const question = diagnosticQuestion(state);
+    if (!question) return `🧭 Baseline Diagnostic ပြီးပါပြီ။\\n\\nပျမ်းမျှအခြေအနေ: ${summary.average}/100\\nအာရုံစိုက်ရန်: ${summary.weakSkills.join(', ') || 'ဆက်လက်လေ့ကျင့်ပါ။'}`;
+    return `🧭 English အခြေခံစစ်ဆေးမှု\\n\\nမေးခွန်း ${summary.answered + 1}/${DIAGNOSTIC_QUESTIONS.length}\\nအပိုင်း: ${question.title || question.skill}\\n\\n${question.prompt}\\n\\nအကူအညီ: ${question.hint}\\n\\nအဖြေကို English ဖြင့်ရေးပါ။ မသိသေးလည်း ရပါတယ်—ဒါဟာ သင့်အတွက် သင့်တော်တဲ့ lesson ရွေးပေးရန် စစ်ဆေးတာပါ။`;
+}
+
+function projectKeyboard() {
+    return Markup.inlineKeyboard([
+        [Markup.button.callback('▶️ Project စမယ်', 'project_start')],
+        [Markup.button.callback('📊 Project တိုးတက်မှု', 'project_progress')],
+        [Markup.button.callback('🏠 ပင်မ Menu', 'menu')]
+    ]);
+}
+
+function projectMessage(progress) {
+    const summary = projectSummary(progress.projectState || {});
+    const project = summary.current;
+    return `🎯 Real-life English Projects\\n\\nပြီးဆုံးပြီးသော Project: ${summary.completed}/${summary.total}\\nတင်ပြမှုအကြိမ်: ${summary.submissions}\\n\\n${project ? `လက်ရှိ Project: ${project.title}\\nလုပ်ရမယ့်အလုပ်: ${project.task}\\nအောင်မြင်မှုစစ်ရန်: ${project.success}` : 'နောက် Project မရှိသေးပါ။ သင့်လက်ရှိအဆင့်အလိုက် Project ကို စတင်ပါ။'}\\n\\nစာဖြင့်ရေးနိုင်သလို အသံဖြင့်လည်း ပို့နိုင်ပါသည်။ ဆရာက rubric အတိုင်း စစ်ပြီး ပြန်လေ့ကျင့်ရမည့်အချက်ကို ပြောပါမယ်။`;
+}
+
+function kidsGuardianSummary(progress) {
+    const completed = Array.isArray(progress.completedLessons) ? progress.completedLessons.length : 0;
+    const current = getKidsLesson(progress.lessonNumber);
+    const mastery = current ? progress.lessonMastery?.[`kids-${current.id}`] : null;
+    return `👨‍👩‍👧 လူကြီးအတွက် Kids အကျဉ်းချုပ်\\n\\nပြီးဆုံးပြီးသော Lesson: ${completed}/${KIDS_COURSE.length}\\nလက်ရှိအဆင့်: ${getKidsStage(current?.stageId || progress.stageId)?.title || 'Discovery English'}\\nလက်ရှိ Lesson: ${current ? `${current.id}. ${current.title}` : 'ပြီးဆုံးပါပြီ'}\\nလက်ရှိ mastery: ${mastery?.bestScore || 0}/100\\nSpeaking လေ့ကျင့်မှု: ${progress.speakingAttempts || 0} ကြိမ်\\nPractice အကြိမ်: ${progress.practiceAttempts || 0} ကြိမ်\\n\\nအိမ်မှာ ကလေးကို အမှားအတွက် မရှက်စေဘဲ lesson ထဲက English sentence ၂–၃ ကြောင်းကို ပျော်ပျော်ရွှင်ရွှင် ပြန်ပြောခိုင်းပါ။ အခြားကလေးများနှင့် မနှိုင်းယှဉ်ပါနှင့်။`;
+}
+
 function setupHandlers(bot) {
     bot.start(async (ctx) => {
         const mode = await getCurrentMode(ctx.from.id);
         await ctx.reply(`မင်္ဂလာပါ ${ctx.from.first_name || 'သူငယ်ချင်း'}!\n\nကျွန်တော်က သင့်ရဲ့ AI English Tutor LinguistPro ဖြစ်ပါတယ်။\n\nလက်ရှိ Mode: ${mode}\n\nBeginner မှ Pro အထိ အဆင့်လိုက်လေ့လာရန် /academy ကိုနှိပ်ပါ။ ၁၂ ခန်းပါ အခြေခံသင်တန်းအတွက် /course ကိုနှိပ်ပါ။\nအောက်က မြန်စာခလုတ်များကို အသုံးပြုပါ။ Command အားလုံးကြည့်ရန် /help ကိုနှိပ်ပါ။`, mainKeyboard(ctx.from.id));
     });
 
-    bot.help((ctx) => ctx.reply('📚 အသုံးပြုနိုင်သော Command များ\n\n/start - Tutor ကိုစတင်ရန်\n/help - ဒီအကူအညီစာမျက်နှာကို ပြရန်\n/learning - အဆင့်လိုက်သင်ယူမှု Menu\n/practice - လေ့ကျင့်ခန်း Menu\n/profile - ကိုယ်ပိုင် Learning Profile\n/recommend - ဒီနေ့ ဆရာ့အကြံပြုချက်\n/errorclinic - အမှားပြန်သင်ခန်းစာ\n/conversation - Conversation Ladder\n/kids - Kids English School စရန်\n/kidslesson - Kids လက်ရှိ Lesson\n/kidspractice - Kids လေ့ကျင့်ခန်း Menu\n/kidsstages - Kids အဆင့်များ\n/kidsmenu - Kids Menu\n/kidsprogress - Kids တိုးတက်မှု\n/kidsreview - Kids Review\n/academy - Speaking Academy ကို စတင်ရန် သို့မဟုတ် ပြန်ဆက်ရန်\n/levels - Free/Premium အဆင့်များကြည့်ရန်\n/academylesson - လက်ရှိ Academy lesson ပြန်ကြည့်ရန်\n/teacherlesson - ဆရာဦးဆောင်သင်ခန်းစာ စရန်\n/homework - ဒီနေ့အိမ်စာကြည့်ရန်\n/academyquiz - လက်ရှိ lesson အတွက် Quiz မေးခွန်းအသစ်ရရန်\n/coach - English Learning Coach ကို မေးမြန်းရန်\n/dailyplan - ဒီနေ့အတွက် ကိုယ်ပိုင် Study Plan ဆွဲရန်\n/wordbank - Vocabulary ပြန်လေ့ကျင့်ရန်\n/pronunciation - Pronunciation Coach ဖြင့် အသံလေ့ကျင့်ရန်\n/livevoice - Premium voice conversation စရန်\n/endlive - Voice conversation ပြီးဆုံးရန်\n/skillreport - မိမိ English Skill Report ကြည့်ရန်\n/tracks - General, Travel, IELTS, TOEFL, Business, Job Interview track ရွေးရန်\n/nextacademylesson - လက်ရှိ lesson ပြီးပြီး နောက် lesson သွားရန်\n/academyprogress - Level, points, streak, progress ကြည့်ရန်\n/academyreview - ပြီးခဲ့သော lesson ပြန်လေ့ကျင့်ရန်\n/academyassessment - Checkpoint assessment ဖြေရန်\n/academyroleplay - Real-life role-play စရန်\n/academycertificate - Pro completion status ကြည့်ရန်\n/academyreset - Academy progress ပြန်စရန်\n/course - ၁၂ ခန်းပါ အခြေခံသင်တန်းဖွင့်ရန်\n/teacherlesson - Beginner/Academy lesson ကို ဆရာလို အဆင့်လိုက်သင်ရန်\n/mode - Normal, IELTS, Translator Mode ရွေးရန်\n/myid - Telegram ID ကြည့်ရန်\n/privacy - Privacy controls ကြည့်ရန်\n/exportdata - မိမိ learning data export ရယူရန်\n/deletedata - မိမိ learning data ဖျက်ရန်\n/classroom - မိမိ Classroom ကြည့်ရန်\n/classroom_join CODE - ဆရာ့ Classroom ထဲဝင်ရန်\n/teacher - ဆရာအတွက် Teacher Center\n/classroom_create CLASS_NAME - ဆရာက အတန်းဖန်တီးရန်\n/classroom_dashboard CODE - ဆရာက ကျောင်းသားတိုးတက်မှုကြည့်ရန်\n/upgrade USER_ID DAYS - Admin က Premium ကို ကိုယ်တိုင်ဖွင့်ပေးရန်\n\nအောက်က မြန်စာခလုတ်များကို အသုံးပြုပါ။ Academy ထဲမှာ စာသား သို့မဟုတ် အသံပို့ပါ။ ကျွန်တော်က ဆရာလို သင်ပေး၊ ပြင်ပေး၊ Quiz မေးပြီး အကြံပေးပါမယ်။', mainKeyboard(ctx.from.id)));
+    bot.help((ctx) => ctx.reply('📚 အသုံးပြုနိုင်သော Command များ\n\n/start - Tutor ကိုစတင်ရန်\n/help - ဒီအကူအညီစာမျက်နှာကို ပြရန်\n/learning - အဆင့်လိုက်သင်ယူမှု Menu\n/practice - လေ့ကျင့်ခန်း Menu\n/profile - ကိုယ်ပိုင် Learning Profile\n/recommend - ဒီနေ့ ဆရာ့အကြံပြုချက်\n/errorclinic - အမှားပြန်သင်ခန်းစာ\n/conversation - Conversation Ladder\n/diagnostic - English skill အခြေခံစစ်ဆေးမှု\n/projects - Real-life English Project\n/kids - Kids English School စရန်\n/kidslesson - Kids လက်ရှိ Lesson\n/kidspractice - Kids လေ့ကျင့်ခန်း Menu\n/kidsstages - Kids အဆင့်များ\n/kidsmenu - Kids Menu\n/kidsprogress - Kids တိုးတက်မှု\n/kidsreview - Kids Review\n/kidsguardian - Kids လူကြီးအကျဉ်းချုပ်\n/academy - Speaking Academy ကို စတင်ရန် သို့မဟုတ် ပြန်ဆက်ရန်\n/levels - Free/Premium အဆင့်များကြည့်ရန်\n/academylesson - လက်ရှိ Academy lesson ပြန်ကြည့်ရန်\n/teacherlesson - ဆရာဦးဆောင်သင်ခန်းစာ စရန်\n/homework - ဒီနေ့အိမ်စာကြည့်ရန်\n/academyquiz - လက်ရှိ lesson အတွက် Quiz မေးခွန်းအသစ်ရရန်\n/coach - English Learning Coach ကို မေးမြန်းရန်\n/dailyplan - ဒီနေ့အတွက် ကိုယ်ပိုင် Study Plan ဆွဲရန်\n/wordbank - Vocabulary ပြန်လေ့ကျင့်ရန်\n/pronunciation - Pronunciation Coach ဖြင့် အသံလေ့ကျင့်ရန်\n/livevoice - Premium voice conversation စရန်\n/endlive - Voice conversation ပြီးဆုံးရန်\n/skillreport - မိမိ English Skill Report ကြည့်ရန်\n/tracks - General, Travel, IELTS, TOEFL, Business, Job Interview track ရွေးရန်\n/nextacademylesson - လက်ရှိ lesson ပြီးပြီး နောက် lesson သွားရန်\n/academyprogress - Level, points, streak, progress ကြည့်ရန်\n/academyreview - ပြီးခဲ့သော lesson ပြန်လေ့ကျင့်ရန်\n/academyassessment - Checkpoint assessment ဖြေရန်\n/academyroleplay - Real-life role-play စရန်\n/projects - Real-life project စရန်\n/academycertificate - Pro completion status ကြည့်ရန်\n/academyreset - Academy progress ပြန်စရန်\n/course - ၁၂ ခန်းပါ အခြေခံသင်တန်းဖွင့်ရန်\n/teacherlesson - Beginner/Academy lesson ကို ဆရာလို အဆင့်လိုက်သင်ရန်\n/mode - Normal, IELTS, Translator Mode ရွေးရန်\n/myid - Telegram ID ကြည့်ရန်\n/privacy - Privacy controls ကြည့်ရန်\n/exportdata - မိမိ learning data export ရယူရန်\n/deletedata - မိမိ learning data ဖျက်ရန်\n/classroom - မိမိ Classroom ကြည့်ရန်\n/classroom_join CODE - ဆရာ့ Classroom ထဲဝင်ရန်\n/teacher - ဆရာအတွက် Teacher Center\n/classroom_create CLASS_NAME - ဆရာက အတန်းဖန်တီးရန်\n/classroom_dashboard CODE - ဆရာက ကျောင်းသားတိုးတက်မှုကြည့်ရန်\n/upgrade USER_ID DAYS - Admin က Premium ကို ကိုယ်တိုင်ဖွင့်ပေးရန်\n\nအောက်က မြန်စာခလုတ်များကို အသုံးပြုပါ။ Academy ထဲမှာ စာသား သို့မဟုတ် အသံပို့ပါ။ ကျွန်တော်က ဆရာလို သင်ပေး၊ ပြင်ပေး၊ Quiz မေးပြီး အကြံပေးပါမယ်။', mainKeyboard(ctx.from.id)));
 
     bot.command('menu', (ctx) => ctx.reply('🏠 ပင်မ Menu', mainKeyboard(ctx.from.id)));
     bot.command('learning', (ctx) => ctx.reply('📚 အဆင့်လိုက်သင်ယူမယ့်နေရာကို ရွေးပါ။', learningKeyboard()));
@@ -1114,6 +1167,59 @@ function setupHandlers(bot) {
         await saveAcademyProgress(ctx.from.id, { ...progress, session: { type: 'conversation_ladder', step: 1, attempts: 0 } });
         await replyLongText(ctx, `🗣️ Conversation Ladder — Step 1\n\n${raw}`);
         return ctx.reply('အခု English ဖြင့် ပြန်ဖြေပါ။', practiceKeyboard());
+    });
+
+    bot.command('diagnostic', async (ctx) => {
+        const progress = await getAcademyProgress(ctx.from.id);
+        const state = normalizeDiagnosticState(progress.diagnosticState || {});
+        return ctx.reply(state.active ? diagnosticMessage(state) : state.completed ? `🧭 Baseline Diagnostic ပြီးပါပြီ။\n\n${JSON.stringify(diagnosticSummary(state), null, 2)}\n\nပြန်စစ်လိုပါက အောက်ကခလုတ်ကို နှိပ်ပါ။` : '🧭 သင့်အတွက် သင့်တော်တဲ့ lesson နဲ့ practice ကို ရွေးပေးရန် အခြေခံစစ်ဆေးမှုကို အရင်လုပ်ပါမယ်။\n\nGrammar၊ vocabulary၊ reading၊ listening၊ speaking နဲ့ fluency ကို မေးခွန်းတိုတိုနဲ့ စစ်ပါမယ်။ အဖြေမသိသေးလည်း ရပါတယ်။', diagnosticKeyboard());
+    });
+    bot.command('projects', async (ctx) => {
+        const progress = await getAcademyProgress(ctx.from.id);
+        if (!progress.active) return ctx.reply('🎯 Project စရန် အရင်ဆုံး Speaking Academy ကို စတင်ပါ။', learningKeyboard());
+        return ctx.reply(projectMessage(progress), projectKeyboard());
+    });
+    bot.command('kidsguardian', async (ctx) => {
+        const progress = await getKidsProgress(ctx.from.id);
+        if (!progress.active) return ctx.reply('🧒 Kids School ကို အရင်စတင်ပြီးမှ လူကြီးအကျဉ်းချုပ်ကို ကြည့်နိုင်ပါမယ်။', mainKeyboard(ctx.from.id));
+        return ctx.reply(kidsGuardianSummary(progress), kidsReplyKeyboard());
+    });
+    bot.action('diagnostic_start', async (ctx) => {
+        await ctx.answerCbQuery();
+        const progress = await getAcademyProgress(ctx.from.id);
+        const diagnosticState = startDiagnostic(progress.diagnosticState || {});
+        const updated = await saveAcademyProgress(ctx.from.id, { ...progress, diagnosticState, session: { type: 'diagnostic' } });
+        return ctx.reply(diagnosticMessage(updated.diagnosticState), diagnosticAnswerKeyboard());
+    });
+    bot.action('diagnostic_skip', async (ctx) => {
+        await ctx.answerCbQuery();
+        const progress = await getAcademyProgress(ctx.from.id);
+        const state = normalizeDiagnosticState(progress.diagnosticState || {});
+        const question = diagnosticQuestion(state);
+        if (!question) return ctx.reply(diagnosticMessage(state), diagnosticKeyboard());
+        const nextState = recordDiagnosticAnswer(state, question, '', 0);
+        const updated = await saveAcademyProgress(ctx.from.id, { ...progress, diagnosticState: nextState, session: nextState.completed ? null : { type: 'diagnostic' } });
+        return ctx.reply(nextState.completed ? `✅ Diagnostic ပြီးပါပြီ။\n\n${diagnosticMessage(nextState)}` : diagnosticMessage(nextState), nextState.completed ? projectKeyboard() : diagnosticAnswerKeyboard());
+    });
+    bot.action('diagnostic_cancel', async (ctx) => {
+        await ctx.answerCbQuery();
+        const progress = await getAcademyProgress(ctx.from.id);
+        await saveAcademyProgress(ctx.from.id, { ...progress, session: null });
+        return ctx.reply('🧭 Diagnostic ကို ခဏရပ်ထားပါပြီ။ ပြန်စလိုပါက အောက်ကခလုတ်ကို နှိပ်ပါ။', diagnosticKeyboard());
+    });
+    bot.action('project_start', async (ctx) => {
+        await ctx.answerCbQuery();
+        const progress = await getAcademyProgress(ctx.from.id);
+        if (!progress.active) return ctx.reply('🎯 Project စရန် အရင်ဆုံး Speaking Academy ကို စတင်ပါ။', learningKeyboard());
+        const project = projectForLevel(progress.levelId);
+        const projectState = startProject(progress.projectState || {}, project.id);
+        const updated = await saveAcademyProgress(ctx.from.id, { ...progress, projectState, session: { type: 'project', projectId: project.id } });
+        return ctx.reply(projectMessage(updated), projectKeyboard());
+    });
+    bot.action('project_progress', async (ctx) => {
+        await ctx.answerCbQuery();
+        const progress = await getAcademyProgress(ctx.from.id);
+        return ctx.reply(projectMessage(progress), projectKeyboard());
     });
 
     setupButtonRouting(bot);
@@ -1889,6 +1995,54 @@ function setupHandlers(bot) {
                 return runKidsPhase(ctx, kids.teacherSession.phase || 'explain', userMessage);
             }
 
+            if (sessionType === 'diagnostic') {
+                const state = normalizeDiagnosticState(academy.diagnosticState || {});
+                const question = diagnosticQuestion(state);
+                if (!question) return ctx.reply('🧭 Diagnostic စစ်ဆေးမှု မေးခွန်းမရှိတော့ပါ။', diagnosticKeyboard());
+                const nextState = recordDiagnosticAnswer(state, question, userMessage);
+                const summary = diagnosticSummary(nextState);
+                const updated = await saveAcademyProgress(ctx.from.id, {
+                    ...academy,
+                    diagnosticState: nextState,
+                    session: nextState.completed ? null : { type: 'diagnostic' },
+                    grammarScore: summary.scores.grammar || academy.grammarScore,
+                    vocabularyScore: summary.scores.vocabulary || academy.vocabularyScore,
+                    speakingScore: summary.scores.speaking || academy.speakingScore,
+                    fluencyScore: summary.scores.fluency || academy.fluencyScore,
+                    retentionStats: { ...(academy.retentionStats || {}), diagnosticCompletedAt: nextState.completed ? new Date().toISOString() : null }
+                });
+                if (nextState.completed) {
+                    await ctx.reply(`✅ Baseline Diagnostic ပြီးပါပြီ။\n\nပျမ်းမျှ: ${summary.average}/100\nအာရုံစိုက်ရန်: ${summary.weakSkills.join(', ') || 'ဆက်လက်လေ့ကျင့်ပါ။'}\n\nဆရာက ဒီရလဒ်ကို Daily Plan၊ Coach နဲ့ lesson recommendation တွေမှာ အသုံးပြုပါမယ်။`, practiceKeyboard());
+                    return updated;
+                }
+                return ctx.reply(`✅ ဒီအပိုင်းကို မှတ်သားလိုက်ပါပြီ။\n\n${diagnosticMessage(nextState)}`, diagnosticAnswerKeyboard());
+            }
+
+            if (sessionType === 'project') {
+                const level = getLevel(academy.levelId);
+                const project = getProject(academy.session.projectId) || projectForLevel(academy.levelId);
+                const raw = await getTutorResponse(buildProjectPrompt(level, project, userMessage), 'default');
+                const parsed = parseJsonResponse(raw);
+                const score = (key) => {
+                    const value = Number(parsed?.[key]);
+                    return Number.isFinite(value) ? Math.max(0, Math.min(10, Math.round(value * 10) / 10)) : 0;
+                };
+                const projectState = recordProjectSubmission(academy.projectState || {}, project.id, {
+                    clarity: score('clarity'), grammar: score('grammar'), vocabulary: score('vocabulary'), fluency: score('fluency'), pronunciation: score('pronunciation'), taskCompletion: score('taskCompletion')
+                }, parsed?.feedback || raw, parsed?.nextTask || 'ဒီ project ကို success criteria အတိုင်း ပြန်လုပ်ပါ။');
+                const readiness = projectReadiness(projectState, project.id);
+                const updated = await saveAcademyProgress(ctx.from.id, {
+                    ...academy,
+                    projectState,
+                    session: readiness.ready ? null : { type: 'project', projectId: project.id },
+                    practiceAttempts: Number(academy.practiceAttempts || 0) + 1,
+                    speakingAttempts: Number(academy.speakingAttempts || 0) + 1,
+                    points: Number(academy.points || 0) + (readiness.ready ? 20 : 8)
+                });
+                await replyLongText(ctx, `🎯 ${project.title} — ဆရာ့အကဲဖြတ်ချက်\n\n${raw}`);
+                return ctx.reply(readiness.ready ? '🎉 ဒီ Project ရဲ့ readiness ရပါပြီ။ နောက် Project ကို အောက်ကခလုတ်နဲ့ စမ်းနိုင်ပါပြီ။' : `🔁 ဒီ Project ကို တစ်ကြိမ်ထပ်လေ့ကျင့်ပါ။ လိုအပ်နေသေးတာ: ${readiness.missing.join(', ') || 'task completion'}`, projectKeyboard());
+            }
+
             if (sessionType === 'error_clinic') {
                 const level = getLevel(academy.levelId);
                 const raw = await getTutorResponse(buildErrorClinicPrompt(level, academyLesson, weakSkills(academy), academy.lastAssessment?.priorities || []) + `\nLearner's new answer:\n${userMessage}`, 'default');
@@ -2072,6 +2226,34 @@ function setupHandlers(bot) {
 
             if (kids.active && kids.teacherSession?.type === 'kids_lesson') {
                 return runKidsVoicePhase(ctx, buffer, ctx.message.voice.mime_type || 'audio/ogg');
+            }
+
+            if (sessionType === 'diagnostic') {
+                const state = normalizeDiagnosticState(academy.diagnosticState || {});
+                const question = diagnosticQuestion(state);
+                if (!question) return ctx.reply('🧭 Diagnostic စစ်ဆေးမှု မေးခွန်းမရှိတော့ပါ။', diagnosticKeyboard());
+                const transcript = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', 'Transcribe the learner voice answer into English only. Return only the words that were spoken, without feedback.');
+                const nextState = recordDiagnosticAnswer(state, question, transcript);
+                const summary = diagnosticSummary(nextState);
+                const updated = await saveAcademyProgress(ctx.from.id, { ...academy, diagnosticState: nextState, session: nextState.completed ? null : { type: 'diagnostic' }, retentionStats: { ...(academy.retentionStats || {}), diagnosticCompletedAt: nextState.completed ? new Date().toISOString() : null } });
+                if (nextState.completed) return ctx.reply(`✅ Voice Diagnostic ပြီးပါပြီ။\n\nပျမ်းမျှ: ${summary.average}/100\nအာရုံစိုက်ရန်: ${summary.weakSkills.join(', ') || 'ဆက်လက်လေ့ကျင့်ပါ။'}`, practiceKeyboard());
+                return ctx.reply(`✅ Voice answer မှတ်သားလိုက်ပါပြီ။\n\n${diagnosticMessage(nextState)}`, diagnosticAnswerKeyboard());
+            }
+
+            if (sessionType === 'project') {
+                const level = getLevel(academy.levelId);
+                const project = getProject(academy.session.projectId) || projectForLevel(academy.levelId);
+                const raw = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildProjectPrompt(level, project, 'Voice submission', true));
+                const parsed = parseJsonResponse(raw);
+                const score = (key) => {
+                    const value = Number(parsed?.[key]);
+                    return Number.isFinite(value) ? Math.max(0, Math.min(10, Math.round(value * 10) / 10)) : 0;
+                };
+                const projectState = recordProjectSubmission(academy.projectState || {}, project.id, { clarity: score('clarity'), grammar: score('grammar'), vocabulary: score('vocabulary'), fluency: score('fluency'), pronunciation: score('pronunciation'), taskCompletion: score('taskCompletion') }, parsed?.feedback || raw, parsed?.nextTask || 'ဒီ project ကို success criteria အတိုင်း ပြန်လုပ်ပါ။');
+                const readiness = projectReadiness(projectState, project.id);
+                const updated = await saveAcademyProgress(ctx.from.id, { ...academy, projectState, session: readiness.ready ? null : { type: 'project', projectId: project.id }, practiceAttempts: Number(academy.practiceAttempts || 0) + 1, speakingAttempts: Number(academy.speakingAttempts || 0) + 1, points: Number(academy.points || 0) + (readiness.ready ? 20 : 8) });
+                await replyLongText(ctx, `🎯 Voice ${project.title} — ဆရာ့အကဲဖြတ်ချက်\n\n${raw}`);
+                return ctx.reply(readiness.ready ? '🎉 Voice Project readiness ရပါပြီ။' : `🔁 Voice Project ကို ထပ်လုပ်ပါ။ လိုအပ်နေသေးတာ: ${readiness.missing.join(', ') || 'task completion'}`, projectKeyboard());
             }
 
             if (sessionType === 'error_clinic') {
@@ -2275,4 +2457,4 @@ function setupHandlers(bot) {
     });
 }
 
-module.exports = { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, learningKeyboard, practiceKeyboard, progressKeyboard, profileKeyboard, courseKeyboard, moreKeyboard, privacyKeyboard, classroomKeyboard, adminKeyboard, academyKeyboard, modeReplyKeyboard, BUTTONS, normalizeQuiz, quizKeyboard, quizNextKeyboard, normalizeDailyPlan, dailyPlanKeyboard, isAdminUser };
+module.exports = { setupHandlers, splitMessage, englishSpeechChunks, mainKeyboard, learningKeyboard, practiceKeyboard, progressKeyboard, profileKeyboard, courseKeyboard, moreKeyboard, privacyKeyboard, classroomKeyboard, adminKeyboard, academyKeyboard, modeReplyKeyboard, diagnosticKeyboard, projectKeyboard, kidsGuardianSummary, BUTTONS, normalizeQuiz, quizKeyboard, quizNextKeyboard, normalizeDailyPlan, dailyPlanKeyboard, isAdminUser };

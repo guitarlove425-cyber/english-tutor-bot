@@ -116,7 +116,11 @@ function scheduleReview(queue, item) {
         dueDate: item.dueDate || existing.dueDate || new Date(Date.now() + 86400000).toISOString().slice(0, 10),
         reason: String(item.reason || 'ဒီနေ့သင်ခန်းစာကို ပြန်နွေးရန်').slice(0, 240),
         completed: false,
-        completedAt: null
+        completedAt: null,
+        reviewCount: Math.max(0, Number(existing.reviewCount || 0)),
+        intervalDays: Math.max(1, Number(existing.intervalDays || 1)),
+        lastScore: existing.lastScore == null ? null : Math.max(0, Math.min(100, Number(existing.lastScore))),
+        lastReviewedAt: existing.lastReviewedAt || null
     };
     return [...source.filter((queued) => queued.id !== entry.id), entry].slice(-30);
 }
@@ -127,11 +131,28 @@ function getDueReviews(queue = [], date = new Date().toISOString().slice(0, 10))
         .sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || '')));
 }
 
-function completeReview(queue = [], reviewId) {
-    const completedAt = new Date().toISOString();
-    return (Array.isArray(queue) ? queue : []).map((entry) => entry.id === String(reviewId)
-        ? { ...entry, completed: true, completedAt }
-        : entry);
+function completeReview(queue = [], reviewId, score = null) {
+    const reviewedAt = new Date().toISOString();
+    const intervals = [1, 3, 7, 14, 30, 60];
+    return (Array.isArray(queue) ? queue : []).map((entry) => {
+        if (entry.id !== String(reviewId)) return entry;
+        const reviewCount = Math.max(0, Number(entry.reviewCount || 0)) + 1;
+        const numericScore = score == null ? 70 : Math.max(0, Math.min(100, Number(score) || 0));
+        const passed = numericScore >= 70;
+        const intervalDays = passed ? intervals[Math.min(reviewCount, intervals.length - 1)] : 1;
+        const due = new Date(Date.now() + intervalDays * 86400000).toISOString().slice(0, 10);
+        return {
+            ...entry,
+            completed: false,
+            completedAt: null,
+            reviewCount,
+            intervalDays,
+            lastScore: numericScore,
+            lastReviewedAt: reviewedAt,
+            dueDate: due,
+            reason: passed ? 'ပြန်မှတ်မိမှုကို အချိန်ခြားပြီး ထပ်မံစစ်ရန်' : 'မကျွမ်းသေးသောအချက်ကို မနက်ဖြန် ပြန်လေ့ကျင့်ရန်'
+        };
+    });
 }
 
 module.exports = {

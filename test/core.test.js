@@ -28,13 +28,50 @@ const { LEVELS, getLesson: getAcademyLesson, getNextLesson, levelIsPremium } = r
 const { seedWordBank, getDueWords, reviewWord, skillReport, recordLessonEvidence, getLessonMastery, lessonNeedsRemediation, canAdvanceLesson, weakSkills } = require('../src/academy/learning');
 const { TRACKS, getTrack, trackIsPremium } = require('../src/academy/tracks');
 const { normalizeClassCode, studentSummary } = require('../src/classroom/classroom');
-const { buildAcademyTextPrompt, buildAcademyVoicePrompt, buildCoachPrompt, buildCoachVoicePrompt, buildDailyPlanPrompt, buildTeacherPhasePrompt, buildRemediationPrompt, buildQuizFeedbackPrompt, buildRoleplayPrompt, buildAssessmentPrompt } = require('../src/academy/teacher');
+const { buildAcademyTextPrompt, buildAcademyVoicePrompt, buildCoachPrompt, buildCoachVoicePrompt, buildDailyPlanPrompt, buildTeacherPhasePrompt, buildRemediationPrompt, buildQuizFeedbackPrompt, buildRoleplayPrompt, buildAssessmentPrompt, buildProjectPrompt } = require('../src/academy/teacher');
 const { createTeacherSession, advanceTeacherSession, normalizeHomework, completeHomework, scheduleReview, getDueReviews, completeReview } = require('../src/academy/session');
 const { errorStatus, isTransientError, retryDelayMs, modelCandidates } = require('../src/ai/gemini');
 const { normalizeLearnerProfile, recommendTeachingMode, profileSummary } = require('../src/academy/orchestrator');
+const { DIAGNOSTIC_QUESTIONS, startDiagnostic, diagnosticQuestion, recordDiagnosticAnswer, diagnosticSummary } = require('../src/academy/diagnostics');
+const { PROJECTS, startProject, recordProjectSubmission, projectReadiness, projectSummary } = require('../src/academy/projects');
+const { healthMetrics, recordRequest, recordSuccess, recordFailure, recordFallback } = require('../src/ops/metrics');
 const { KIDS_STAGES, KIDS_COURSE, getKidsLesson, getKidsStage } = require('../src/kids/content');
 const { buildKidsLessonPrompt, buildKidsVoicePrompt, buildKidsReviewPrompt, buildKidsProgressPrompt } = require('../src/kids/teacher');
 const { buildTextPracticePrompt, buildVoicePracticePrompt } = require('../src/course/teacher');
+
+test('baseline diagnostics record six skills and produce a summary', () => {
+    let state = startDiagnostic();
+    assert.equal(DIAGNOSTIC_QUESTIONS.length, 6);
+    assert.equal(diagnosticQuestion(state).skill, 'grammar');
+    for (const question of DIAGNOSTIC_QUESTIONS) state = recordDiagnosticAnswer(state, question, 'I am learning English because I want to speak clearly.');
+    const summary = diagnosticSummary(state);
+    assert.equal(state.completed, true);
+    assert.equal(summary.answered, 6);
+    assert.ok(Array.isArray(summary.weakSkills));
+});
+
+test('real-life projects use rubric readiness and completion thresholds', () => {
+    const project = PROJECTS[0];
+    let state = startProject({}, project.id);
+    assert.equal(projectReadiness(state).ready, false);
+    state = recordProjectSubmission(state, project.id, { clarity: 8, grammar: 8, vocabulary: 8, fluency: 8, pronunciation: 8, taskCompletion: 8 }, 'ကောင်းပါတယ်။', 'နောက် project ကိုလုပ်ပါ။');
+    assert.equal(projectReadiness(state, project.id).ready, true);
+    assert.equal(projectSummary(state).completed, 1);
+});
+
+test('health metrics expose safe AI reliability counters', () => {
+    const before = healthMetrics();
+    recordRequest();
+    recordSuccess('test-model', 'text');
+    recordFailure('audio', 'test-model', 503, true);
+    recordFallback();
+    const after = healthMetrics();
+    assert.equal(after.requests, before.requests + 1);
+    assert.equal(after.successes, before.successes + 1);
+    assert.equal(after.failures, before.failures + 1);
+    assert.equal(after.fallbackAttempts, before.fallbackAttempts + 1);
+    assert.equal(after.lastError.status, 503);
+});
 
 test('Kids pathway covers Discovery through Young Pro with child-safe prompts', async () => {
     assert.equal(KIDS_STAGES.length, 6);
@@ -287,7 +324,8 @@ test('teacher prompts require detailed classroom explanation and one next action
         buildVoicePracticePrompt(lesson),
         buildKidsLessonPrompt(lesson, 'Discovery'),
         buildKidsVoicePrompt(lesson, 'Discovery'),
-        buildKidsReviewPrompt(lesson, 'Discovery', 'Hello')
+        buildKidsReviewPrompt(lesson, 'Discovery', 'Hello'),
+        buildProjectPrompt(level, { title: 'My Introduction', task: 'Introduce yourself.', skills: ['speaking'], success: 'Be clear.' }, 'Hello, my name is Aye.')
     ];
     for (const prompt of prompts) {
         assert.match(prompt, /Burmese|မြန်မာ/);
@@ -341,7 +379,7 @@ test('Academy Telegram handlers register all public flows', () => {
         telegram: { sendMessage: async () => {} }
     };
     setupHandlers(fakeBot);
-    for (const command of ['admin', 'academy', 'kids', 'kidslesson', 'kidspractice', 'menu', 'learning', 'practice', 'progressmenu', 'more', 'coursemenu', 'privacy_menu', 'classroommenu', 'classroom_join_prompt', 'classroom_create_prompt', 'classroom_dashboard_prompt', 'upgrade_prompt', 'kidsstages', 'kidsmenu', 'kidsprogress', 'kidsreview', 'learning', 'practice', 'profile', 'recommend', 'errorclinic', 'conversation', 'levels', 'academylesson', 'teacherlesson', 'homework', 'academyquiz', 'coach', 'dailyplan', 'wordbank', 'pronunciation', 'livevoice', 'endlive', 'skillreport', 'tracks', 'privacy', 'classroom', 'teacher', 'classroom_create', 'classroom_join', 'classroom_dashboard', 'exportdata', 'deletedata', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
+    for (const command of ['admin', 'academy', 'kids', 'kidslesson', 'kidspractice', 'menu', 'learning', 'practice', 'progressmenu', 'more', 'coursemenu', 'privacy_menu', 'classroommenu', 'classroom_join_prompt', 'classroom_create_prompt', 'classroom_dashboard_prompt', 'upgrade_prompt', 'kidsstages', 'kidsmenu', 'kidsprogress', 'kidsreview', 'learning', 'practice', 'profile', 'recommend', 'errorclinic', 'conversation', 'diagnostic', 'projects', 'kidsguardian', 'levels', 'academylesson', 'teacherlesson', 'homework', 'academyquiz', 'coach', 'dailyplan', 'wordbank', 'pronunciation', 'livevoice', 'endlive', 'skillreport', 'tracks', 'privacy', 'classroom', 'teacher', 'classroom_create', 'classroom_join', 'classroom_dashboard', 'exportdata', 'deletedata', 'nextacademylesson', 'academyprogress', 'academyreview', 'academyassessment', 'academyroleplay', 'academycertificate', 'academyreset', 'mode_normal', 'mode_ielts', 'mode_translator']) {
         assert.ok(registered.commands.includes(command), `missing /${command}`);
     }
     assert.ok(registered.events.includes('text'));
@@ -374,6 +412,9 @@ test('Academy Telegram handlers register all public flows', () => {
     assert.ok(registered.hears.includes(BUTTONS.academy.wordBank));
     assert.ok(registered.hears.includes(BUTTONS.academy.pronunciation));
     assert.ok(registered.hears.includes(BUTTONS.academy.report));
+    assert.ok(registered.hears.includes(BUTTONS.academy.diagnostic));
+    assert.ok(registered.hears.includes(BUTTONS.academy.projects));
+    assert.ok(registered.hears.includes(BUTTONS.kids.guardian));
     assert.ok(registered.hears.includes(BUTTONS.academy.tracks));
     assert.ok(registered.hears.includes(BUTTONS.main.privacy));
     assert.ok(registered.hears.includes(BUTTONS.main.classroom));

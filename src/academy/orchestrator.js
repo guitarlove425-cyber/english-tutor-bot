@@ -43,8 +43,15 @@ function recommendTeachingMode(progress = {}) {
     const weak = weakSkills(progress);
     const profile = normalizeLearnerProfile(progress.learnerProfile);
     const current = profile.goal === 'exam' ? 'exam' : null;
+    const diagnostic = progress.diagnosticState || {};
+    const completedLessons = Array.isArray(progress.completedLessons) ? progress.completedLessons.length : 0;
+    const projectState = progress.projectState || {};
     let recommendation;
-    if (profile.confidence === 'low' || (report.speaking < 45 && report.consistency < 45)) {
+    if (!diagnostic.completed && completedLessons === 0 && !progress.placementCompleted && !progress.learnerProfile) {
+        recommendation = recommendationFor('baseline_diagnostic', 'သင့်အတွက် ဘယ် skill ကို အရင်သင်သင့်သလဲ တိတိကျကျသိရန် အခြေခံစစ်ဆေးမှုကို အရင်လုပ်သင့်ပါတယ်။', 'Baseline Diagnostic မှာ grammar၊ vocabulary၊ reading၊ listening၊ speaking နဲ့ fluency ကို မေးခွန်းတိုတိုဖြင့် ဖြေပါ။', weak);
+    } else if (completedLessons >= 5 && !projectState.currentProjectId && profile.goal !== 'exam') {
+        recommendation = recommendationFor('real_life_project', 'သင်ခန်းစာအခြေခံများ ရလာပြီဖြစ်လို့ English ကို လက်တွေ့အသုံးချတဲ့ project နဲ့ စစ်သင့်ပါတယ်။', 'Real-life Project မှာ ကိုယ်တိုင်ပြော/ရေးပြီး ဆရာ့ rubric အတိုင်း feedback ရယူပါ။', weak);
+    } else if (profile.confidence === 'low' || (report.speaking < 45 && report.consistency < 45)) {
         recommendation = recommendationFor('confidence_builder', 'အရင်ဆုံး အလွယ်ဆုံး sentence များနဲ့ အောင်မြင်မှုအတွေ့အကြုံ ရအောင်လုပ်သင့်ပါတယ်။', 'Confidence Builder ကို စပြီး ၃ ကြောင်း English ဖြင့် ပြောပါ။', weak);
     } else if (current === 'exam') {
         recommendation = recommendationFor('exam_simulator', 'သင့်ရည်မှန်းချက်က စာမေးပွဲဖြစ်လို့ timer နဲ့ rubric အတိုင်း လေ့ကျင့်သင့်ပါတယ်။', 'Exam Simulator မှာ မေးခွန်းတစ်ခုကို အချိန်ကန့်သတ်ပြီး ဖြေပါ။', weak);

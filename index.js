@@ -3,6 +3,7 @@ const { Telegraf } = require('telegraf');
 const { setupHandlers } = require('./src/bot/handlers');
 const { config, validateRuntimeConfig } = require('./src/config');
 const { isFirebaseEnabled } = require('./src/database/firebase');
+const { healthMetrics } = require('./src/ops/metrics');
 
 validateRuntimeConfig();
 
@@ -13,6 +14,7 @@ app.get('/', (req, res) => {
         status: 'ok',
         service: 'english-tutor-bot',
         firebase: isFirebaseEnabled() ? 'enabled' : 'memory-fallback',
+        ai: healthMetrics(),
         time: new Date().toISOString()
     });
 });

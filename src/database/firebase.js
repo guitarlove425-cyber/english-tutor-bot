@@ -151,6 +151,9 @@ function defaultCourseProgress() {
         lessonMastery: {},
         learnerProfile: null,
         adaptiveRecommendation: null,
+        diagnosticState: null,
+        projectState: null,
+        retentionStats: {},
         navigationSection: 'main',
         startedAt: null,
         updatedAt: null
@@ -226,6 +229,8 @@ function defaultKidsProgress() {
         lastPracticeDate: null,
         lastScore: null,
         learnerProfile: null,
+        guardianSummaryEnabled: true,
+        safetyFlags: [],
         navigationSection: 'main',
         startedAt: null,
         updatedAt: null
@@ -277,6 +282,9 @@ function defaultAcademyProgress() {
         lessonMastery: {},
         learnerProfile: null,
         adaptiveRecommendation: null,
+        diagnosticState: null,
+        projectState: null,
+        retentionStats: {},
         navigationSection: 'main',
         practiceAttempts: 0,
         speakingAttempts: 0,

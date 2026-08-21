@@ -267,6 +267,20 @@ Lesson context: ${lesson ? `${lesson.title} — ${lesson.speakingTask}` : 'every
 Give Burmese instructions, explain the purpose of this step, give one natural English model with Burmese meaning, ask one speaking question, and give a small hint appropriate to this step. Do not over-correct. After the learner answers, praise one success, correct one important issue with its reason in Burmese, and raise the next step only when the learner demonstrates readiness.`;
 }
 
+function buildProjectPrompt(level, project, answer, isVoice = false) {
+    return `You are a patient project teacher and speaking assessor for a Myanmar learner at ${level.title} (${level.cefr}). This is a practical real-life English project, not a high-stakes official exam.
+Project: ${project.title}
+Task: ${project.task}
+Skills: ${project.skills.join(', ')}
+Success criteria: ${project.success}
+Learner submission${isVoice ? ' is a voice recording' : ''}:
+${answer}
+
+Explain feedback in Burmese, but keep corrected English, model sentences, and the next practice sentence in English. Check the learner against this rubric from 0 to 10: clarity, grammar, vocabulary, fluency, pronunciation/clarity, and task completion. Be conservative and score only what the submission demonstrates.
+Return JSON only with this exact shape: {"clarity":0,"grammar":0,"vocabulary":0,"fluency":0,"pronunciation":0,"taskCompletion":0,"strength":"...","feedback":"...","correctedExample":"...","nextTask":"..."}.
+Give one evidence-based strength, explain the most important improvement in simple Burmese, show one corrected English example, and give one guided retry plus one independent next task. Do not declare the project complete unless the learner has demonstrated the success criteria.`;
+}
+
 function buildAssessmentPrompt(level, assessmentType, answer) {
     return `You are an experienced English speaking examiner and teacher for a Myanmar learner. Write strengths, priorities, task instructions, scores, and feedback in Burmese; keep corrected English examples in English. Assess this learner at ${level.title} (${level.cefr}). Assessment type: ${assessmentType}.
 Learner answer:
@@ -300,5 +314,6 @@ module.exports = {
     buildOrchestratorPrompt,
     buildErrorClinicPrompt,
     buildConversationLadderPrompt,
+    buildProjectPrompt,
     buildAssessmentPrompt
 };
