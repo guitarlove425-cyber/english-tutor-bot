@@ -129,6 +129,7 @@ test('englishSpeechChunks removes Burmese characters and splits long audio text'
     const chunks = englishSpeechChunks(`Hello မင်္ဂလာပါ ${'world '.repeat(500)}`);
     assert.ok(chunks.length > 1);
     assert.ok(chunks.every((chunk) => /^[\x00-\x7F]*$/.test(chunk)));
+    assert.ok(chunks.every((chunk) => chunk.length < 200));
 });
 
 test('memory usage fallback enforces the daily free limit', async () => {

@@ -119,22 +119,53 @@ async function replyLongText(ctx, text) {
     for (const chunk of splitMessage(text)) await ctx.reply(chunk);
 }
 
-function englishSpeechChunks(text) {
+const GOOGLE_TTS_MAX_CHARS = 180;
+
+function englishSpeechChunks(text, maxLength = GOOGLE_TTS_MAX_CHARS) {
     const english = normalizeTelegramText(text).replace(/[^\x00-\x7F]/g, ' ').replace(/\s+/g, ' ').trim();
-    return splitMessage(english, 1800);
+    if (!english) return [];
+    const chunks = [];
+    let current = '';
+    for (const word of english.split(/\s+/)) {
+        if (word.length > maxLength) {
+            if (current) {
+                chunks.push(current);
+                current = '';
+            }
+            for (let index = 0; index < word.length; index += maxLength) {
+                chunks.push(word.slice(index, index + maxLength));
+            }
+            continue;
+        }
+        const candidate = current ? `${current} ${word}` : word;
+        if (candidate.length > maxLength) {
+            chunks.push(current);
+            current = word;
+        } else {
+            current = candidate;
+        }
+    }
+    if (current) chunks.push(current);
+    return chunks;
 }
 
 async function sendEnglishVoiceReply(ctx, text) {
     const chunks = englishSpeechChunks(text);
-    if (!chunks.length) return;
-    await ctx.sendChatAction('record_voice');
-    for (const chunk of chunks) {
-        const audioUrl = googleTTS.getAudioUrl(chunk, {
-            lang: 'en',
-            slow: false,
-            host: 'https://translate.google.com'
-        });
-        await ctx.replyWithVoice(audioUrl);
+    if (!chunks.length) return false;
+    try {
+        await ctx.sendChatAction('record_voice');
+        for (const chunk of chunks) {
+            const audioUrl = googleTTS.getAudioUrl(chunk, {
+                lang: 'en',
+                slow: false,
+                host: 'https://translate.google.com'
+            });
+            await ctx.replyWithVoice(audioUrl);
+        }
+        return true;
+    } catch (error) {
+        console.error('English TTS error:', error.message);
+        return false;
     }
 }
 
