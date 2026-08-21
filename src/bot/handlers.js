@@ -56,6 +56,7 @@ const {
     weakSkills
 } = require('../academy/learning');
 const { TRACKS, getTrack, trackIsPremium } = require('../academy/tracks');
+const { getFeatureTask, featureTaskInstruction } = require('../academy/feature-curriculum');
 const { DIAGNOSTIC_QUESTIONS, normalizeDiagnosticState, startDiagnostic, diagnosticQuestion, recordDiagnosticAnswer, diagnosticSummary } = require('../academy/diagnostics');
 const { PROJECTS, normalizeProjectState, projectForLevel, getProject, startProject, recordProjectSubmission, projectReadiness, projectSummary } = require('../academy/projects');
 const {
@@ -595,7 +596,7 @@ async function sendNewQuiz(ctx) {
     if (!progress.active || !lesson) return ctx.reply('Send /academy to begin your Academy before starting a quiz.');
     if (!(await hasAcademyAccess(ctx, level.id))) return;
     const previousQuestions = (progress.quizHistory || []).map((item) => item.question || item);
-    const raw = await getTutorResponse(buildQuizQuestionPrompt(level, lesson, previousQuestions), 'default');
+    const raw = await getTutorResponse(buildQuizQuestionPrompt(level, lesson, previousQuestions) + featureTaskInstruction(getFeatureTask('quiz', progress.levelId, progress.quizAnswered)), 'default');
     const quiz = normalizeQuiz(parseJsonResponse(raw));
     if (!quiz) return replyLongText(ctx, raw);
     const history = [...(progress.quizHistory || []), { question: quiz.question, lessonId: lesson.id }].slice(-20);
@@ -677,7 +678,7 @@ async function startWordReview(ctx) {
     const status = await usageOrReply(ctx);
     if (!status) return;
     const level = getLevel(progress.levelId);
-    const raw = await getTutorResponse(buildWordReviewPrompt(level, due.map((entry) => entry.word)), 'default');
+    const raw = await getTutorResponse(buildWordReviewPrompt(level, due.map((entry) => entry.word)) + featureTaskInstruction(getFeatureTask('wordReview', progress.levelId, progress.vocabularyReviewCount)), 'default');
     const quiz = normalizeQuiz(parseJsonResponse(raw));
     if (!quiz) return replyLongText(ctx, raw);
     await saveAcademyProgress(ctx.from.id, { ...progress, session: { type: 'word_review', question: quiz, wordId: due[0].id } });
@@ -763,7 +764,7 @@ async function generateDailyPlan(ctx, force = false) {
         lessonMastery: progress.lessonMastery || {},
         previousPlanCompleted: progress.dailyPlanCompleted || []
     };
-    const raw = await getTutorResponse(buildDailyPlanPrompt(level, lesson, stats, date), 'default');
+    const raw = await getTutorResponse(buildDailyPlanPrompt(level, lesson, stats, date) + featureTaskInstruction(getFeatureTask('dailyPlan', progress.levelId, progress.dailyPlanCompleted?.length || 0)), 'default');
     const plan = normalizeDailyPlan(parseJsonResponse(raw), date);
     if (!plan) return replyLongText(ctx, raw);
     const updated = await saveAcademyProgress(ctx.from.id, { ...progress, dailyPlan: plan, dailyPlanDate: date, dailyPlanCompleted: [] });
@@ -1291,7 +1292,7 @@ function setupHandlers(bot) {
         await ctx.answerCbQuery();
         const progress = await getAcademyProgress(ctx.from.id);
         if (!progress.active) return ctx.reply('🎯 Project စရန် အရင်ဆုံး Speaking Academy ကို စတင်ပါ။', learningKeyboard());
-        const project = projectForLevel(progress.levelId);
+        const project = projectForLevel(progress.levelId, progress.projectState);
         const projectState = startProject(progress.projectState || {}, project.id);
         const updated = await saveAcademyProgress(ctx.from.id, { ...progress, projectState, session: { type: 'project', projectId: project.id } });
         return ctx.reply(projectMessage(updated), projectKeyboard());
@@ -2142,8 +2143,8 @@ function setupHandlers(bot) {
 
             if (sessionType === 'project') {
                 const level = getLevel(academy.levelId);
-                const project = getProject(academy.session.projectId) || projectForLevel(academy.levelId);
-                const raw = await getTutorResponse(buildProjectPrompt(level, project, userMessage), 'default');
+                const project = getProject(academy.session.projectId) || projectForLevel(academy.levelId, academy.projectState);
+                const raw = await getTutorResponse(buildProjectPrompt(level, project, userMessage) + featureTaskInstruction(getFeatureTask('project', academy.levelId, academy.practiceAttempts)), 'default');
                 const parsed = parseJsonResponse(raw);
                 const score = (key) => {
                     const value = Number(parsed?.[key]);
@@ -2238,7 +2239,7 @@ function setupHandlers(bot) {
                     skillReport: skillReport(academy),
                     currentLesson: academyLesson?.title || null,
                     lessonMastery: academy.lessonMastery || {}
-                }), 'default');
+                }) + featureTaskInstruction(getFeatureTask('coach', academy.levelId, academy.coachQuestions)), 'default');
                 await replyLongText(ctx, replyMessage);
                 await saveAcademyProgress(ctx.from.id, { ...academy, session: { type: 'coach' }, coachQuestions: Number(academy.coachQuestions || 0) + 1 });
                 await sendEnglishVoiceReply(ctx, replyMessage);
@@ -2248,7 +2249,7 @@ function setupHandlers(bot) {
             if (sessionType === 'roleplay' && academyLesson) {
                 if (!(await hasAcademyAccess(ctx, academy.levelId))) return;
                 const level = getLevel(academy.levelId);
-                const replyMessage = await getTutorResponse(buildRoleplayPrompt(academyLesson, level, userMessage), 'default');
+                const replyMessage = await getTutorResponse(buildRoleplayPrompt(academyLesson, level, userMessage) + featureTaskInstruction(getFeatureTask('roleplay', academy.levelId, academy.practiceAttempts)), 'default');
                 await replyLongText(ctx, replyMessage);
                 const today = new Date().toISOString().slice(0, 10);
                 await saveAcademyProgress(ctx.from.id, { ...academy, practiceAttempts: Number(academy.practiceAttempts || 0) + 1, points: Number(academy.points || 0) + 12, lastPracticeDate: today });
@@ -2383,8 +2384,8 @@ function setupHandlers(bot) {
 
             if (sessionType === 'project') {
                 const level = getLevel(academy.levelId);
-                const project = getProject(academy.session.projectId) || projectForLevel(academy.levelId);
-                const raw = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildProjectPrompt(level, project, 'Voice submission', true));
+                const project = getProject(academy.session.projectId) || projectForLevel(academy.levelId, academy.projectState);
+                const raw = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildProjectPrompt(level, project, 'Voice submission', true) + featureTaskInstruction(getFeatureTask('project', academy.levelId, academy.practiceAttempts)));
                 const parsed = parseJsonResponse(raw);
                 const score = (key) => {
                     const value = Number(parsed?.[key]);
@@ -2451,7 +2452,7 @@ function setupHandlers(bot) {
                 const level = getLevel(academy.levelId);
                 const track = getTrack(academy.trackId);
                 const turns = Number(academy.session.turns || 0);
-                const replyMessage = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildLiveVoicePrompt(level, track, turns));
+                const replyMessage = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildLiveVoicePrompt(level, track, turns) + featureTaskInstruction(getFeatureTask('liveVoice', academy.levelId, turns)));
                 const updated = await saveAcademyProgress(ctx.from.id, { ...academy, session: { ...academy.session, type: 'live_voice', turns: turns + 1 }, practiceAttempts: Number(academy.practiceAttempts || 0) + 1, speakingAttempts: Number(academy.speakingAttempts || 0) + 1, points: Number(academy.points || 0) + 15, speakingScore: Math.max(Number(academy.speakingScore || 0), 50) });
                 await replyLongText(ctx, replyMessage);
                 await sendEnglishVoiceReply(ctx, replyMessage);
@@ -2460,7 +2461,7 @@ function setupHandlers(bot) {
 
             if (sessionType === 'pronunciation') {
                 const level = getLevel(academy.levelId);
-                const raw = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildPronunciationPrompt(level, academyLesson));
+                const raw = await getTutorResponseFromAudio(buffer, ctx.message.voice.mime_type || 'audio/ogg', 'default', buildPronunciationPrompt(level, academyLesson) + featureTaskInstruction(getFeatureTask('pronunciation', academy.levelId, academy.pronunciationAttempts)));
                 const pronunciation = parseJsonResponse(raw) || { score: 0, clarity: 0, sounds: [], stressTip: 'Speak slowly and repeat the sentence.', correctedSentence: '', repeatTask: raw };
                 const score = Math.max(0, Math.min(10, Number(pronunciation.score || 0)));
                 const pronunciationPosition = academyLesson ? masteryPosition({ kind: 'academy', lesson: academyLesson }) : null;

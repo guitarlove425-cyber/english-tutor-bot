@@ -198,7 +198,7 @@ async function startCourse(userId) {
 async function completeCourseLesson(userId, lessonId, score = null) {
     const progress = await getCourseProgress(userId);
     const completedLessons = [...new Set([...(progress.completedLessons || []), Number(lessonId)])].sort((a, b) => a - b);
-    const nextLesson = Math.min(Math.max(progress.currentLesson, Number(lessonId) + 1), 12);
+    const nextLesson = Math.min(Math.max(progress.currentLesson, Number(lessonId) + 1), 18);
     return saveCourseProgress(userId, {
         ...progress,
         active: true,

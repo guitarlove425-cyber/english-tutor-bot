@@ -33,11 +33,12 @@ const { createTeacherSession, advanceTeacherSession, normalizeHomework, complete
 const { errorStatus, isTransientError, retryDelayMs, modelCandidates } = require('../src/ai/gemini');
 const { normalizeLearnerProfile, recommendTeachingMode, profileSummary } = require('../src/academy/orchestrator');
 const { DIAGNOSTIC_QUESTIONS, startDiagnostic, diagnosticQuestion, recordDiagnosticAnswer, diagnosticSummary } = require('../src/academy/diagnostics');
-const { PROJECTS, startProject, recordProjectSubmission, projectReadiness, projectSummary } = require('../src/academy/projects');
+const { PROJECTS, projectForLevel, startProject, recordProjectSubmission, projectReadiness, projectSummary } = require('../src/academy/projects');
 const { healthMetrics, recordRequest, recordSuccess, recordFailure, recordFallback } = require('../src/ops/metrics');
 const { KIDS_STAGES, KIDS_COURSE, getKidsLesson, getKidsStage } = require('../src/kids/content');
 const { buildKidsLessonPrompt, buildKidsVoicePrompt, buildKidsReviewPrompt, buildKidsProgressPrompt } = require('../src/kids/teacher');
 const { buildTextPracticePrompt, buildVoicePracticePrompt } = require('../src/course/teacher');
+const { FEATURE_TASKS, getFeatureTask, featureCoverage } = require('../src/academy/feature-curriculum');
 const { normalizeTelegramText } = require('../src/bot/format');
 
 test('Telegram formatter removes raw Markdown while preserving readable content', () => {
@@ -58,12 +59,19 @@ test('baseline diagnostics record six skills and produce a summary', () => {
 });
 
 test('real-life projects use rubric readiness and completion thresholds', () => {
+    assert.equal(PROJECTS.length, 12);
+    assert.equal(new Set(PROJECTS.map((project) => project.id)).size, PROJECTS.length);
+    for (const levelId of ['starter', 'elementary', 'pre-intermediate', 'intermediate', 'upper-intermediate', 'advanced-pro']) {
+        assert.equal(PROJECTS.filter((project) => project.levelId === levelId).length, 2);
+    }
     const project = PROJECTS[0];
     let state = startProject({}, project.id);
     assert.equal(projectReadiness(state).ready, false);
     state = recordProjectSubmission(state, project.id, { clarity: 8, grammar: 8, vocabulary: 8, fluency: 8, pronunciation: 8, taskCompletion: 8 }, 'ကောင်းပါတယ်။', 'နောက် project ကိုလုပ်ပါ။');
     assert.equal(projectReadiness(state, project.id).ready, true);
     assert.equal(projectSummary(state).completed, 1);
+    const nextProject = projectForLevel('starter', state);
+    assert.notEqual(nextProject.id, project.id);
 });
 
 test('health metrics expose safe AI reliability counters', () => {
@@ -82,14 +90,14 @@ test('health metrics expose safe AI reliability counters', () => {
 
 test('Kids pathway covers Discovery through Young Pro with child-safe prompts', async () => {
     assert.equal(KIDS_STAGES.length, 6);
-    assert.equal(KIDS_COURSE.length, 30);
+    assert.equal(KIDS_COURSE.length, 36);
     assert.equal(getKidsLesson(1).stageId, 'discovery');
-    assert.equal(getKidsLesson(30).stageId, 'pro');
+    assert.equal(getKidsLesson(36).stageId, 'pro');
     assert.equal(getKidsStage('academic').cefr, 'B1-B2');
     assert.match(buildKidsLessonPrompt(getKidsLesson(1), getKidsStage('discovery').title), /Myanmar child/);
     assert.match(buildKidsLessonPrompt(getKidsLesson(1), getKidsStage('discovery').title, 'Hello', 'check'), /အသံဖိုင်မလိုအပ်ပါ/);
     assert.match(buildKidsVoicePrompt(getKidsLesson(1), 'Discovery English'), /Do not shame/);
-    assert.match(buildKidsProgressPrompt({ currentLesson: 1 }, 0, 30), /trusted adult/);
+    assert.match(buildKidsProgressPrompt({ currentLesson: 1 }, 0, 36), /trusted adult/);
     const userId = `kids-${Date.now()}`;
     const started = await startKids(userId, '6-9');
     assert.equal(started.active, true);
@@ -153,9 +161,9 @@ test('mode persistence and Premium day validation work', async () => {
     assert.match(expiry, /^\d{4}-\d{2}-\d{2}$/);
 });
 
-test('beginner course has 12 ordered lessons with practice content', () => {
-    assert.equal(BEGINNER_COURSE.length, 12);
-    assert.deepEqual(BEGINNER_COURSE.map((lesson) => lesson.id), Array.from({ length: 12 }, (_, index) => index + 1));
+test('beginner course has 18 ordered lessons with practice content', () => {
+    assert.equal(BEGINNER_COURSE.length, 18);
+    assert.deepEqual(BEGINNER_COURSE.map((lesson) => lesson.id), Array.from({ length: 18 }, (_, index) => index + 1));
     assert.ok(BEGINNER_COURSE.every((lesson) => lesson.objective && lesson.practice && lesson.modelAnswer));
     assert.equal(getLesson(1).title, 'Greetings and Introductions');
 });
@@ -234,11 +242,33 @@ test('learning tracks expose free and Premium paths', () => {
 test('academy curriculum covers Starter through Advanced/Pro with Premium gating', () => {
     assert.equal(LEVELS.length, 6);
     assert.deepEqual(LEVELS.map((level) => level.cefr), ['A0', 'A1', 'A2', 'B1', 'B2', 'C1+']);
-    assert.equal(LEVELS.reduce((sum, level) => sum + level.lessons.length, 0), 36);
+    assert.equal(LEVELS.reduce((sum, level) => sum + level.lessons.length, 0), 60);
     assert.equal(getAcademyLesson('starter', 1).title, 'Greetings and names');
-    assert.equal(getNextLesson('starter', 6).levelId, 'elementary');
+    assert.equal(getNextLesson('starter', 10).levelId, 'elementary');
     assert.equal(levelIsPremium('starter'), false);
     assert.equal(levelIsPremium('advanced-pro'), true);
+});
+
+test('core curriculum titles do not overlap across pathways', () => {
+    const beginnerTitles = new Set(BEGINNER_COURSE.map((lesson) => lesson.title.toLowerCase()));
+    const academyTitles = LEVELS.flatMap((level) => level.lessons.map((lesson) => String(lesson[0]).toLowerCase()));
+    const kidsTitles = new Set(KIDS_COURSE.map((lesson) => lesson.title.toLowerCase()));
+    assert.equal(new Set(academyTitles).size, academyTitles.length);
+    assert.equal(academyTitles.filter((title) => beginnerTitles.has(title)).length, 0);
+    assert.equal([...kidsTitles].filter((title) => beginnerTitles.has(title) || academyTitles.includes(title)).length, 0);
+    assert.ok(LEVELS.every((level) => level.lessons.length === 10));
+});
+
+test('feature task banks stay separate from the core sequence', () => {
+    const features = ['quiz', 'coach', 'dailyPlan', 'wordReview', 'pronunciation', 'liveVoice', 'roleplay', 'diagnostic', 'project'];
+    for (const feature of features) {
+        assert.ok(Array.isArray(FEATURE_TASKS[feature]));
+        assert.equal(FEATURE_TASKS[feature].length, 6);
+        assert.ok(getFeatureTask(feature, 'starter').task);
+    }
+    assert.deepEqual(featureCoverage(), Object.fromEntries(features.map((feature) => [feature, 6])));
+    const taskTitles = features.map((feature) => getFeatureTask(feature, 'intermediate').title);
+    assert.equal(new Set(taskTitles).size, taskTitles.length);
 });
 
 test('academy progress persists placement, points, assessment, and reset in memory fallback', async () => {

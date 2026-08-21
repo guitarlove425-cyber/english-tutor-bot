@@ -28,7 +28,7 @@ Main Menu တွင် အောက်ပါအပိုင်းများရ
 | **🧰 Practice** | Quiz၊ Role-play၊ Voice၊ Diagnostic၊ Project စသည့် လေ့ကျင့်ခန်းများ |
 | **📊 Progress** | Skill Report၊ Daily Plan၊ Review နှင့် Certificate ကြည့်ရန် |
 | **👤 Profile** | Learning goal၊ အချိန်၊ practice type၊ confidence စသည်ဖြင့် Profile ပြင်ရန် |
-| **📘 Beginner Course** | ၁၂ ခန်းပါ အခြေခံ Speaking သင်တန်း |
+| **📘 Beginner Course** | ၁၈ ခန်းပါ အခြေခံ Speaking သင်တန်း |
 | **⚙️ More/Settings** | Mode၊ Privacy၊ Classroom၊ My ID နှင့် Help |
 | **❓ Help** | Command နှင့် အသုံးပြုနည်းများ |
 
@@ -36,7 +36,7 @@ Lesson တက်နေချိန်တွင် Main Menu ခလုတ်မ�
 
 ## ၃။ Beginner Speaking Course
 
-Beginner Course သည် English ကို အခြေခံအကျဆုံးမှ စတင်လိုသူများအတွက် ၁၂ ခန်းပါ လမ်းကြောင်းဖြစ်ပါသည်။ Greetings၊ alphabet/sounds၊ be verbs၊ numbers၊ family၊ daily routine၊ questions၊ time၊ food/shopping၊ directions၊ yesterday/tomorrow နှင့် real-life conversation တို့ကို အဆင့်လိုက် လေ့လာနိုင်ပါသည်။
+Beginner Course သည် English ကို အခြေခံအကျဆုံးမှ စတင်လိုသူများအတွက် ၁၈ ခန်းပါ လမ်းကြောင်းဖြစ်ပါသည်။ Greetings၊ alphabet/sounds၊ be verbs၊ numbers၊ family၊ daily routine၊ questions၊ time၊ food/shopping၊ directions၊ home/neighborhood၊ transport၊ work/study messages၊ help requests နှင့် real-life mission တို့ကို အဆင့်လိုက် လေ့လာနိုင်ပါသည်။
 
 ### စတင်နည်း
 
@@ -60,7 +60,7 @@ Beginner Course သည် English ကို အခြေခံအကျဆုံ
 
 ## ၄။ Premium English Speaking Academy
 
-Academy သည် အခြေခံမှ Pro အထိ လမ်းကြောင်းရှည်ဖြစ်ပါသည်။ Level ၆ ခုနှင့် Lesson ၃၆ ခန်း ပါဝင်ပါသည်။
+Academy သည် အခြေခံမှ Pro အထိ လမ်းကြောင်းရှည်ဖြစ်ပါသည်။ Level ၆ ခုနှင့် Lesson ၆၀ ခန်း ပါဝင်ပါသည်။ Level တစ်ခုစီတွင် သီးခြားရည်မှန်းချက် ၁၀ ခန်းရှိပြီး listening, speaking, reading, writing, interaction နှင့် mediation ကို တစ်ဆင့်ချင်း တိုးတက်စေပါသည်။
 
 | Level | CEFR | အခြေအနေ |
 |---|---|---|
@@ -126,15 +126,15 @@ Main Menu မှ **🧰 Practice** ကိုနှိပ်၍ အောက်�
 
 | Feature | အသုံးပြုပုံ |
 |---|---|
-| **🧠 Lesson Quiz** | လက်ရှိ lesson အပေါ်မူတည်သည့် A/B/C/D မေးခွန်းဖြေခြင်း |
-| **🎭 Role-play** | ခရီးသွားခြင်း၊ အလုပ်၊ နေ့စဉ်ဘဝ စသည့် အခြေအနေများတွင် စကားပြောခြင်း |
+| **🧠 Lesson Quiz** | Core lesson ကိုမကူးဘဲ သီးခြား retrieval task bank မှ A/B/C/D မေးခွန်းဖြေခြင်း |
+| **🎭 Role-play** | Core lesson မဟုတ်သော goal-oriented ခရီး၊ service၊ team နှင့် professional scenario များတွင် စကားပြောခြင်း |
 | **🗣️ Pronunciation Coach** | Voice ပို့၍ အသံထွက်နှင့် clarity feedback ရယူခြင်း |
 | **📖 My Word Bank** | Lesson vocabulary နှင့် spaced repetition review |
-| **🎙️ Live Voice** | Multi-turn voice conversation ဖြင့် speaking လေ့ကျင့်ခြင်း |
-| **📝 Assessment** | Speaking skill များကို အဆင့်မြင့် စစ်ဆေးခြင်း |
+| **🎙️ Live Voice** | Level အလိုက် သီးခြား scenario များဖြင့် turn-taking နှင့် spontaneous speaking လေ့ကျင့်ခြင်း |
+| **📝 Assessment** | Core lesson ကို ထပ်မသင်ဘဲ performance evidence ဖြင့် speaking skill များကို စစ်ဆေးခြင်း |
 | **🧭 အခြေခံစစ်ဆေးမှု** | Grammar၊ vocabulary၊ reading၊ listening၊ speaking၊ fluency baseline စစ်ခြင်း |
-| **🎯 Real-life Project** | လက်တွေ့ project တင်ပြီး rubric ဖြင့် အကဲဖြတ်ခြင်း |
-| **🩺 အမှားပြန်သင်ခန်းစာ** | ထပ်ခါထပ်ခါမှားသောအချက်များကို mini-class အဖြစ် ပြန်သင်ခြင်း |
+| **🎯 Real-life Project** | CEFR level တစ်ခုစီအတွက် preparation/performance milestone ၂ ခုဖြင့် လက်တွေ့ project တင်ပြီး rubric ဖြင့် အကဲဖြတ်ခြင်း |
+| **🩺 အမှားပြန်သင်ခန်းစာ** | Learner ၏ weak skill/error history အပေါ်မူတည်ပြီး သီးခြား mini-class ပြန်သင်ခြင်း |
 | **🗣️ စကားပြောလှေကား** | Short answer မှ two-minute response အထိ တစ်ဆင့်ချင်း လေ့ကျင့်ခြင်း |
 
 ### Quiz ဖြေခြင်း
@@ -192,7 +192,7 @@ General နှင့် Travel သည် Free path ဖြစ်ပြီး IELT
 
 ## ၁၀။ Kids English School
 
-Kids English School သည် ကလေးများအတွက် Discovery English မှ Young Pro အထိ Lesson ၃၀ပါသော သီးခြားလမ်းကြောင်းဖြစ်ပါသည်။ စတင်ချိန်တွင် အသက်အုပ်စုကိုသာ ရွေးရပါမည်။ ကလေး၏အမည်၊ လိပ်စာ၊ ဖုန်း၊ ကျောင်းအမည်၊ ကိုယ်ရေးဓာတ်ပုံ သို့မဟုတ် မလိုအပ်သောကိုယ်ရေးအချက်အလက်များကို မတောင်းပါ။
+Kids English School သည် ကလေးများအတွက် Discovery English မှ Young Pro အထိ Lesson ၃၆ ခန်းပါသော သီးခြားလမ်းကြောင်းဖြစ်ပါသည်။ စတင်ချိန်တွင် အသက်အုပ်စုကိုသာ ရွေးရပါမည်။ ကလေး၏အမည်၊ လိပ်စာ၊ ဖုန်း၊ ကျောင်းအမည်၊ ကိုယ်ရေးဓာတ်ပုံ သို့မဟုတ် မလိုအပ်သောကိုယ်ရေးအချက်အလက်များကို မတောင်းပါ။
 
 | Stage | CEFR/အဓိကအကြောင်းအရာ |
 |---|---|

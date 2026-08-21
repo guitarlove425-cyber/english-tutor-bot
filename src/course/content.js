@@ -106,6 +106,60 @@ const BEGINNER_COURSE = [
         examples: ['Hello, my name is ...', 'Where are you from?', 'Nice to meet you.', 'See you tomorrow.'],
         practice: 'Send a short voice or text conversation with at least five English sentences.',
         modelAnswer: 'Hello, my name is Aung. I am from Myanmar. I am a student. I study English every day. Nice to meet you.'
+    },
+    {
+        id: 13,
+        title: 'Home and Neighborhood',
+        objective: 'Describe your home and one nearby place.',
+        explanation: 'Use there is and there are to say what exists in a place.',
+        examples: ['There is a table in my room.', 'There are two shops near my home.'],
+        practice: 'Describe your room and neighborhood with four short sentences.',
+        modelAnswer: 'There is a table in my room. There are two shops near my home. My street is quiet. The market is nearby.'
+    },
+    {
+        id: 14,
+        title: 'Clocks and Daily Choices',
+        objective: 'Say when activities happen and choose between two options.',
+        explanation: 'Use at for a time and or to show a choice: I study at six, or I study at seven.',
+        examples: ['I eat at seven.', 'Do you want tea or coffee?', 'I want tea, please.'],
+        practice: 'Answer three time questions and make two polite choices.',
+        modelAnswer: 'I wake up at six. I study at eight. I want tea, please.'
+    },
+    {
+        id: 15,
+        title: 'Transport and Tickets',
+        objective: 'Ask for a ticket and understand a simple travel instruction.',
+        explanation: 'Use I need a ticket to ... and When does it leave? for basic transport questions.',
+        examples: ['I need a ticket to Yangon.', 'When does the bus leave?', 'It leaves at nine.'],
+        practice: 'Role-play buying a ticket and confirming the departure time.',
+        modelAnswer: 'I need a ticket to Yangon, please. When does the bus leave?'
+    },
+    {
+        id: 16,
+        title: 'Simple Health and Help Requests',
+        objective: 'Describe a basic need and ask a trusted person for help.',
+        explanation: 'Use I feel ... and Could you help me? Keep the message simple and seek professional help for serious problems.',
+        examples: ['I feel tired.', 'I need help, please.', 'Could you call the clinic?'],
+        practice: 'Write a safe help request for a simple everyday situation.',
+        modelAnswer: 'I feel unwell. Could you help me contact a clinic, please?'
+    },
+    {
+        id: 17,
+        title: 'Work and Study Messages',
+        objective: 'Write a short message about availability and a change of plan.',
+        explanation: 'Use I can, I cannot, and I will to give a clear update.',
+        examples: ['I can join at three.', 'I cannot come today.', 'I will send the file tomorrow.'],
+        practice: 'Write a four-line message explaining one schedule change.',
+        modelAnswer: 'Hello. I cannot come today. I can join tomorrow at three. Thank you.'
+    },
+    {
+        id: 18,
+        title: 'Beginner Mission: Meet, Ask, Solve',
+        objective: 'Complete a short conversation that includes an introduction, a question, and a practical request.',
+        explanation: 'Combine the course language naturally instead of repeating one grammar pattern only.',
+        examples: ['Hello, my name is May.', 'Could you help me find the bus stop?', 'Thank you.'],
+        practice: 'Complete a six-sentence real-life conversation with the teacher.',
+        modelAnswer: 'Hello, my name is May. I am from Myanmar. Could you help me find the bus stop? Is it near the market? Thank you very much. See you.'
     }
 ];
 
