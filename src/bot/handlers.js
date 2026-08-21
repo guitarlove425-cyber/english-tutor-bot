@@ -35,6 +35,7 @@ const { KIDS_STAGES, KIDS_COURSE, getKidsStage, getKidsLesson, getNextKidsLesson
 const { buildKidsLessonPrompt, buildKidsVoicePrompt, buildKidsReviewPrompt, buildKidsProgressPrompt } = require('../kids/teacher');
 const { buildLessonIntro, buildTextPracticePrompt, buildVoicePracticePrompt } = require('../course/teacher');
 const { handleNavigationInput } = require('./navigation');
+const { normalizeTelegramText } = require('./format');
 const {
     LEVELS,
     LEVEL_ORDER,
@@ -105,7 +106,7 @@ const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 const VALID_MODES = new Set(['default', 'ielts', 'translator']);
 
 function splitMessage(text, maxLength = TELEGRAM_TEXT_LIMIT) {
-    const value = String(text || '').trim();
+    const value = normalizeTelegramText(text);
     if (!value) return [];
     const chunks = [];
     for (let index = 0; index < value.length; index += maxLength) {
@@ -119,7 +120,7 @@ async function replyLongText(ctx, text) {
 }
 
 function englishSpeechChunks(text) {
-    const english = String(text || '').replace(/[^\x00-\x7F]/g, ' ').replace(/\s+/g, ' ').trim();
+    const english = normalizeTelegramText(text).replace(/[^\x00-\x7F]/g, ' ').replace(/\s+/g, ' ').trim();
     return splitMessage(english, 1800);
 }
 

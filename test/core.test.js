@@ -38,6 +38,13 @@ const { healthMetrics, recordRequest, recordSuccess, recordFailure, recordFallba
 const { KIDS_STAGES, KIDS_COURSE, getKidsLesson, getKidsStage } = require('../src/kids/content');
 const { buildKidsLessonPrompt, buildKidsVoicePrompt, buildKidsReviewPrompt, buildKidsProgressPrompt } = require('../src/kids/teacher');
 const { buildTextPracticePrompt, buildVoicePracticePrompt } = require('../src/course/teacher');
+const { normalizeTelegramText } = require('../src/bot/format');
+
+test('Telegram formatter removes raw Markdown while preserving readable content', () => {
+    const formatted = normalizeTelegramText('### 1. Lesson Objective\n\n**Use this pattern.**\n\n---\n\n- Say: `Hello`');
+    assert.equal(formatted, '1. Lesson Objective\n\nUse this pattern.\n\n──────────\n\n• Say: Hello');
+    assert.doesNotMatch(formatted, /###|\*\*|```|---|`/);
+});
 
 test('baseline diagnostics record six skills and produce a summary', () => {
     let state = startDiagnostic();
