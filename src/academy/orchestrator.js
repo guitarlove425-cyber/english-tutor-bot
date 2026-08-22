@@ -47,7 +47,7 @@ function recommendTeachingMode(progress = {}) {
     const completedLessons = Array.isArray(progress.completedLessons) ? progress.completedLessons.length : 0;
     const projectState = progress.projectState || {};
     let recommendation;
-    if (!diagnostic.completed && completedLessons === 0 && !progress.placementCompleted && !progress.learnerProfile) {
+    if (!diagnostic.completed && completedLessons === 0 && !progress.placementCompleted) {
         recommendation = recommendationFor('baseline_diagnostic', 'သင့်အတွက် ဘယ် skill ကို အရင်သင်သင့်သလဲ တိတိကျကျသိရန် အခြေခံစစ်ဆေးမှုကို အရင်လုပ်သင့်ပါတယ်။', 'Baseline Diagnostic မှာ grammar၊ vocabulary၊ reading၊ listening၊ speaking နဲ့ fluency ကို မေးခွန်းတိုတိုဖြင့် ဖြေပါ။', weak);
     } else if (completedLessons >= 5 && !projectState.currentProjectId && profile.goal !== 'exam') {
         recommendation = recommendationFor('real_life_project', 'သင်ခန်းစာအခြေခံများ ရလာပြီဖြစ်လို့ English ကို လက်တွေ့အသုံးချတဲ့ project နဲ့ စစ်သင့်ပါတယ်။', 'Real-life Project မှာ ကိုယ်တိုင်ပြော/ရေးပြီး ဆရာ့ rubric အတိုင်း feedback ရယူပါ။', weak);
@@ -71,7 +71,8 @@ function recommendTeachingMode(progress = {}) {
 
 function profileSummary(profile = {}) {
     const normalized = normalizeLearnerProfile(profile);
-    return `ရည်မှန်းချက်: ${profileGoalLabel(normalized.goal)}\nတစ်နေ့လေ့လာချိန်: ${normalized.dailyMinutes} မိနစ်\nလေ့ကျင့်ပုံ: ${practiceLabel(normalized.preferredPractice)}\nလက်ရှိယုံကြည်မှု: ${normalized.confidence}`;
+    const confidenceLabel = { low: 'အစပြုနေဆဲ', medium: 'အလယ်အလတ်', high: 'ယုံကြည်မှုကောင်း' }[normalized.confidence] || 'အလယ်အလတ်';
+    return `ရည်မှန်းချက်: ${profileGoalLabel(normalized.goal)}\nတစ်နေ့လေ့လာချိန်: ${normalized.dailyMinutes} မိနစ်\nလေ့ကျင့်ပုံ: ${practiceLabel(normalized.preferredPractice)}\nလက်ရှိယုံကြည်မှု: ${confidenceLabel}`;
 }
 
 module.exports = {

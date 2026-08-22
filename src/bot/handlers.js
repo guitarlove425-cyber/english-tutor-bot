@@ -1015,12 +1015,15 @@ function modeReplyKeyboard() {
 }
 
 function commandUpdate(ctx, command) {
+    const source = ctx.update.message || ctx.update.callback_query?.message || {};
     const message = {
-        ...ctx.update.message,
+        ...source,
+        from: ctx.from || source.from,
+        chat: ctx.chat || source.chat,
         text: command,
         entities: [{ type: 'bot_command', offset: 0, length: command.length }]
     };
-    return { ...ctx.update, message };
+    return { update_id: Date.now(), message };
 }
 
 function setupButtonRouting(bot) {
@@ -1121,8 +1124,52 @@ function profileConfidenceKeyboard() {
     ]);
 }
 
+const RECOMMENDATION_LABELS = {
+    baseline_diagnostic: 'အခြေခံ Skill စစ်ဆေးမှု',
+    real_life_project: 'လက်တွေ့ Project',
+    confidence_builder: 'ယုံကြည်မှုတည်ဆောက်ခြင်း',
+    exam_simulator: 'စာမေးပွဲလေ့ကျင့်မှု',
+    pronunciation_lab: 'အသံထွက်လေ့ကျင့်ခန်း',
+    conversation_ladder: 'စကားပြောလှေကား',
+    error_clinic: 'အမှားပြန်သင်ခန်းစာ',
+    scenario_simulation: 'လက်တွေ့အခြေအနေ Role-play'
+};
+
+const RECOMMENDATION_COMMANDS = {
+    baseline_diagnostic: '/diagnostic',
+    real_life_project: '/projects',
+    confidence_builder: '/coach',
+    exam_simulator: '/academyassessment',
+    pronunciation_lab: '/pronunciation',
+    conversation_ladder: '/conversation',
+    error_clinic: '/errorclinic',
+    scenario_simulation: '/academyroleplay'
+};
+
+const SKILL_LABELS = {
+    grammar: 'Grammar',
+    vocabulary: 'Vocabulary',
+    reading: 'Reading',
+    listening: 'Listening',
+    speaking: 'Speaking',
+    fluency: 'Fluency',
+    pronunciation: 'Pronunciation',
+    consistency: 'နေ့စဉ်လေ့လာမှု'
+};
+
 function recommendationMessage(recommendation) {
-    return `🧭 ဒီနေ့အတွက် ဆရာ့အကြံပြုချက်\n\nအခုလေ့ကျင့်သင့်တာ: ${recommendation.mode}\nဘာကြောင့်လဲ: ${recommendation.reason}\n\nလုပ်ရမယ့်အလုပ်:\n${recommendation.action}\n\nအားနည်းနိုင်သော skill: ${(recommendation.weakSkills || []).join(', ') || 'အထူးအားနည်းချက် မတွေ့သေးပါ။'}`;
+    const label = RECOMMENDATION_LABELS[recommendation.mode] || 'အဆင့်လိုက် English လေ့ကျင့်မှု';
+    const weak = (recommendation.weakSkills || []).map((skill) => SKILL_LABELS[skill] || skill).join(', ') || 'အထူးအားနည်းချက် မတွေ့သေးပါ။';
+    return `🧭 ဒီနေ့အတွက် ဆရာ့အကြံပြုချက်\n\nအခုလေ့ကျင့်သင့်တာ: ${label}\nဘာကြောင့်လဲ: ${recommendation.reason}\n\nလုပ်ရမယ့်အလုပ်:\n${recommendation.action}\n\nပြန်လည်အားဖြည့်မယ့် skill: ${weak}`;
+}
+
+function recommendationKeyboard(recommendation) {
+    const label = RECOMMENDATION_LABELS[recommendation.mode] || 'အကြံပြုလေ့ကျင့်မှု';
+    return Markup.inlineKeyboard([
+        [Markup.button.callback(`▶️ ${label} စမယ်`, `recommend_start_${recommendation.mode}`)],
+        [Markup.button.callback('🔄 Profile ကို ပြန်ပြင်မယ်', 'profile_edit')],
+        [Markup.button.callback('🏠 ပင်မ Menu', 'menu')]
+    ]);
 }
 
 function diagnosticKeyboard() {
@@ -1213,7 +1260,13 @@ function setupHandlers(bot) {
     bot.command('profile', async (ctx) => {
         const progress = await getAcademyProgress(ctx.from.id);
         if (progress.learnerProfile) {
-            return ctx.reply(`🧭 သင့်ကိုယ်ပိုင်သင်ယူမှု Profile\n\n${profileSummary(progress.learnerProfile)}\n\nဒီ Profile အပေါ်မူတည်ပြီး ဆရာက သင်ကြားနည်းကို အလိုအလျောက်ရွေးပေးပါမယ်။`, profileKeyboard(ctx.from.id));
+            const recommendation = recommendTeachingMode(progress);
+            const updated = await saveAcademyProgress(ctx.from.id, {
+                ...progress,
+                adaptiveRecommendation: { ...recommendation, createdAt: new Date().toISOString() }
+            });
+            await ctx.reply(`🧭 သင့်ကိုယ်ပိုင်သင်ယူမှု Profile\n\n${profileSummary(progress.learnerProfile)}\n\n${recommendationMessage(recommendation)}\n\nအောက်ကခလုတ်ကိုနှိပ်လျှင် ဆရာ့အကြံပြုချက်အတိုင်း စတင်ပါမယ်။`, recommendationKeyboard(recommendation));
+            return updated;
         }
         await saveAcademyProgress(ctx.from.id, { ...progress, session: { type: 'profile_setup', step: 'goal', draft: {} } });
         return ctx.reply('🧭 သင့်အတွက် ကိုယ်ပိုင်သင်ကြားမှုလမ်းကြောင်း ဆွဲပေးရန် ရည်မှန်းချက်ကို ရွေးပါ။', profileGoalKeyboard());
@@ -1222,7 +1275,7 @@ function setupHandlers(bot) {
         const progress = await getAcademyProgress(ctx.from.id);
         const recommendation = recommendTeachingMode(progress);
         const updated = await saveAcademyProgress(ctx.from.id, { ...progress, adaptiveRecommendation: { ...recommendation, createdAt: new Date().toISOString() } });
-        await ctx.reply(recommendationMessage(recommendation), practiceKeyboard());
+        await ctx.reply(`${recommendationMessage(recommendation)}\n\nအောက်ကခလုတ်ကိုနှိပ်လျှင် ဆရာ့အကြံပြုချက်အတိုင်း စတင်ပါမယ်။`, recommendationKeyboard(recommendation));
         return updated;
     });
     bot.command('errorclinic', async (ctx) => {
@@ -2073,9 +2126,27 @@ function setupHandlers(bot) {
             const updated = await saveAcademyProgress(ctx.from.id, { ...progress, learnerProfile, session: null });
             const recommendation = recommendTeachingMode(updated);
             await saveAcademyProgress(ctx.from.id, { ...updated, adaptiveRecommendation: { ...recommendation, createdAt: new Date().toISOString() } });
-            await ctx.reply(`✅ သင့်ကိုယ်ပိုင် Profile ပြီးပါပြီ။\n\n${profileSummary(learnerProfile)}\n\n${recommendationMessage(recommendation)}`, practiceKeyboard());
+            await ctx.reply(`✅ သင့်ကိုယ်ပိုင် Profile ပြီးပါပြီ။\n\n${profileSummary(learnerProfile)}\n\n${recommendationMessage(recommendation)}\n\nအောက်ကခလုတ်ကိုနှိပ်လျှင် ဆရာ့အကြံပြုချက်အတိုင်း စတင်ပါမယ်။`, recommendationKeyboard(recommendation));
         });
     }
+
+    for (const [mode, command] of Object.entries(RECOMMENDATION_COMMANDS)) {
+        bot.action(`recommend_start_${mode}`, async (ctx) => {
+            await ctx.answerCbQuery();
+            const progress = await getAcademyProgress(ctx.from.id);
+            if (!progress.active && mode !== 'baseline_diagnostic') {
+                return ctx.reply('📚 အရင်ဆုံး Speaking Academy ကို စတင်ပြီးမှ ဒီလေ့ကျင့်မှုကို ဆက်လုပ်ပါ။', learningKeyboard());
+            }
+            return bot.handleUpdate(commandUpdate(ctx, command));
+        });
+    }
+
+    bot.action('profile_edit', async (ctx) => {
+        await ctx.answerCbQuery();
+        const progress = await getAcademyProgress(ctx.from.id);
+        await saveAcademyProgress(ctx.from.id, { ...progress, session: { type: 'profile_setup', step: 'goal', draft: {} } });
+        return ctx.reply('🧭 Profile ကို ပြန်ပြင်ရန် ရည်မှန်းချက်ကို ရွေးပါ။', profileGoalKeyboard());
+    });
 
     bot.on('text', async (ctx) => {
         const userMessage = String(ctx.message.text || '').trim();

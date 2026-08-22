@@ -114,7 +114,11 @@ test('learner profiles normalize safely and orchestrator recommendations target 
     assert.equal(profile.dailyMinutes, 120);
     assert.equal(profile.preferredPractice, 'voice');
     assert.match(profileSummary(profile), /IELTS\/TOEFL/);
-    const recommendation = recommendTeachingMode({ learnerProfile: profile, speakingScore: 30, pronunciationScore: 50, fluencyScore: 40, consistencyScore: 30 });
+    assert.match(profileSummary(profile), /အစပြုနေဆဲ/);
+    assert.doesNotMatch(profileSummary(profile), /confidence|low/);
+    const firstRecommendation = recommendTeachingMode({ learnerProfile: profile, speakingScore: 30, pronunciationScore: 50, fluencyScore: 40, consistencyScore: 30 });
+    assert.equal(firstRecommendation.mode, 'baseline_diagnostic');
+    const recommendation = recommendTeachingMode({ learnerProfile: profile, diagnosticState: { completed: true }, speakingScore: 30, pronunciationScore: 50, fluencyScore: 40, consistencyScore: 30 });
     assert.equal(recommendation.mode, 'confidence_builder');
     assert.ok(Array.isArray(recommendation.weakSkills));
 });
@@ -466,4 +470,6 @@ test('Academy Telegram handlers register all public flows', () => {
     assert.ok(registered.actions.some((action) => String(action).includes('teacher_homework')));
     assert.ok(registered.actions.includes('teacher_home'));
     assert.ok(registered.actions.includes('lesson_pronounce'));
+    assert.ok(registered.actions.some((action) => String(action).includes('recommend_start')));
+    assert.ok(registered.actions.includes('profile_edit'));
 });
